@@ -70,7 +70,7 @@
       "title": "Model Context Protocol: tools/call",
       "url": "https://modelcontextprotocol.io/docs/concepts/tools",
       "kind": "standard",
-      "use": "The JSON-RPC tool-call shape the gateway scopes.",
+      "use": "The JSON-RPC tool-call shape the transfer gate scopes.",
       "status": "not-read",
       "checked": "2026-11-06"
     }
@@ -163,7 +163,7 @@
     {
       "id": "concept-editor",
       "label": "Reconfigure the policy live",
-      "description": "Switch the allowed state, add a blocked city, or turn the capability off; the SAME call flips on the next run.",
+      "description": "Change the amount bands live; the SAME call flips on the next run — a crossing edit falls back to the defaults, never wider.",
       "group": "concept",
       "action": {
         "type": "route",

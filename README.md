@@ -1,51 +1,38 @@
 # HITL MFA Lab
 
-**Tier: Demo.** A third-party weather MCP server is scoped at an agent gateway: the gateway enforces a live, admin-editable state-scope policy entirely at the edge — the backend never sees the restriction and has no concept of it. This is the standalone mock of the AI-DEMO2 weather-mcp showcase (UC30 / UC31 / UC32 and the `tx-weather-scope` gateway policy) — same decision contract, no real gateway or tenant.
+**Tier: Demo.** An agent attempts a money movement; a mock authorization policy decides by amount band and agent context — PERMIT below the confirm bar, human consent (HITL) in the confirm band, MFA step-up at the MFA bar, hard DENY above the ceiling — and CIBA requests out-of-band approval on the user's own device for a sensitive agent-initiated action, regardless of amount. This is the standalone mock of the AI-DEMO2 HITL track (UC7 / UC8 / UC22 and the `authorizeObligations` / `hitlCredit` / CIBA services) — same decision contract, no real policy engine or tenant.
 
-1. **The third-party tool.** An unmodified, policy-blind weather MCP server. Remove the gateway and every city on earth works — governance must live at the edge, because you cannot always change the tool.
-2. **The scope policy.** The gateway allows one configurable US state at a time (Texas by default), or everything (`any`), or everything except an admin-managed blocked-city list. It checks the city NAME and the COORDINATES (the agent geocodes first), exactly, with no substring matching: "Plano, IL" is not Plano, TX, and "Miami, OH" is not Miami, FL.
-3. **Live reconfigure.** The allowed state is admin-editable and read on EVERY request: switch Texas to Any and the exact same Miami query flips from denied to permitted — no restart, no code change. Reset restores Texas so the next pass starts from the documented policy.
+Three ideas:
 
-Mock + Real (rule 19): Mock is fully offline (mock gateway, mock policy store, mock weather server). Real toggle mechanics follow rule 19: unconfigured, it is disabled with a how-to tooltip and `POST /api/mode` answers 409. In this build Real is RESERVED — the toggle reports a configured `HMLAB_REAL_*` env, but no live-gateway data path is wired yet; Mock is the story.
+1. **The amount bands.** One policy decides by band: below the confirm bar the call permits, the confirm band requires explicit human consent, at or above the MFA bar it requires device MFA, above the hard ceiling it denies. Verified live in AI-DEMO2: $300 → HITL, $600 → step-up, $2500 → DENY. The bands are admin-editable and read on EVERY request — change them and the same call flips, with no restart.
+2. **Highest gate wins.** DENY > STEP_UP > HITL, and most-specific obligation classification (HITL_CONSENT before HITL) so one policy intent can never gate twice in one engine and pass in another.
+3. **Approvals are receipts, not vibes.** Single-use (consume-on-use, so a replay re-challenges), amount-bound (approving $300 cannot discharge $600), and the MFA credit expires after five minutes. CIBA is triggered by the agent context plus the sensitivity of the action, NOT by amount: a $150 transfer in-browser needs no step-up, but an AGENT moving money gets out-of-band approval on the user's phone — a compromised browser or rogue agent cannot self-approve.
 
-Every host ends in `.example`, and the app makes no outbound network request (a netguard blocks them and tests prove it). It needs no tenant and no credentials. Denial reasons are shown raw, so a visitor sees exactly which policy line decided.
+Mock + Real (rule 19): Mock is fully offline (mock gate, mock MFA, mock CIBA). Real toggle mechanics follow rule 19: unconfigured, it is disabled with a how-to tooltip and `POST /api/mode` answers 409. In this build Real is RESERVED — the toggle reports a configured `HMLAB_REAL_*` env, but no live policy-engine data path is wired yet; Mock is the story.
 
-**Status: built.** Tabs: Gateway scope (scenario walkthrough, live policy editor, tool-call panel with the coordinate shape), Diagram (ReactFlow from `/api/diagram`: movable boxes, Simulate, speed, Reset), Talk track. Presenter mode (`P`, `Esc` leaves) keeps the simulation banner.
+## Run it
 
-## Run
+- `./scripts/run.sh` — host-run on port 7680 (Node >= 26), opens the browser.
+- Docker: `HOST_PORT=7680 docker compose up --build -d` (published on 127.0.0.1 only).
+- Through the shared lab-proxy: `https://local.ping-devops.com:8443/hitl-mfa-lab/` (never a raw loopback URL).
+- Tests: `npm ci && npm test` — 66 server + 18 web + 5 packaging tests.
 
-```
-./scripts/run.sh          # installs, builds, runs the doctor, starts; open http://localhost:7680/
-```
+## Scenarios
 
-or `npm ci && npm run doctor && npm start`. With Docker (OrbStack): `HOST_PORT=7680 docker compose up --build -d` (published on `127.0.0.1` only). Through the family lab proxy: `https://local.ping-devops.com:8443/hitl-mfa-lab/` (once the route is added).
+1. **HITL: $300 needs human consent** — the agent pauses, a consent modal is surfaced, and only an explicit human approval (a single-use receipt) lets it proceed (UC8).
+2. **MFA: $600 steps up to device MFA** — step-up outranks the consent gate; the demo OTP is 123123, a labelled demo bypass (UC7).
+3. **CIBA: $150, approved out-of-band on the phone** — bc-authorize, the on-page phone panel, the agent polls; amount-independent by design (UC22).
+4. **DENY: $2500 exceeds the hard limit** — DENY outranks every obligation; nothing can clear it (the UC6 band).
+5. **REPLAY: the same approved receipt cannot be used twice** — consume-on-use; the retry re-challenges.
+6. **BOUND: approving $300 does not authorize $600** — the receipt is amount-bound; the $600 call steps up.
 
-| Command | What it does |
-| --- | --- |
-| `npm test` | server (node:test), web (vitest) and repo checks |
-| `npm run doctor` | preflight: node, mode, bind, port, scenarios, labels, tokens, hosts, keys, diagrams, netguard, port free |
-| `npm run content-pack` | rebuilds and validates `content-pack.json` |
-| `npm run reset` | resets the default workspace's policy and runs on a running server |
+## Surface
 
-Port range 7680-7689 (default 7680). `GET /api/health` answers `demo-health/1`.
+- `GET/POST /api/policy` — read / set this workspace's bands (normalized; a crossing edit falls back to the defaults, never wider).
+- `POST /api/transfer` — the gated tool call; 428 = a human beat is required, 403 = deny, 200 = permitted (the decision, reason, receipt and W3C-traceparent hops are the answer).
+- `POST /api/mfa/challenge`, `POST /api/mfa/verify` — the MFA beat (demo OTP `123123`).
+- `POST /api/ciba/bc-authorize`, `GET /api/ciba/poll/:authReqId`, `POST /api/ciba/respond` — the CIBA beat.
+- `GET /api/scenarios` — the story as data. `GET /api/diagram` — the diagram-studio data. `GET /api/health` — `demo-health/1`.
+- Workspaces: every visitor carries an `X-Workspace` id; Reset clears only that workspace.
 
-## API
-
-- `GET /api/scenarios` — the story: title, intro, banner, tools, six scenarios, facts (measured / inferred / UNVERIFIED), talk track.
-- `GET/POST /api/policy` — read / set this workspace's gateway policy (normalized; an unknown allowedState falls back to the NARROWEST state, never wider; blocked cities are geocoded once at add time and unknown cities are refused).
-- `POST /api/weather/tool` — the gateway. Body `{ tool, arguments? }`. `200` forwarded (the mock third-party server answers), `403` denied before the backend ever runs. Raw mock hops with W3C `traceparent`.
-- `GET /api/runs`, `POST /api/reset` — per-workspace history and reset.
-- `GET /api/diagram`, `GET /api/info`, `GET /api/health` — diagram-studio/1 data, build info (rule 19 fields), `demo-health/1`.
-- `POST /api/mode` — the Mock/Real toggle, body exactly `{ source: "mock" | "real" }`; 409 when Real is unconfigured.
-
-Workspace id goes in `X-Workspace` (one visitor's state never touches another's).
-
-## What is real, and what is not
-
-- Real (shape and contract): the scope decision logic (name + coordinate checks, exact matching, the bounding boxes, the blocked-city radius), the fail-narrow default, the live per-request policy read, the capability kill switch. All mirror the AI-DEMO2 gateway script (`tx-weather-scope`) and weather-mcp page.
-- Mock: the gateway (no PingGateway), the policy store (workspace state, not a feature-flag service), the weather server (fixture data, no Nominatim geocoding — a fixed demo-city table stands in), the tokens.
-- UNVERIFIED: none of the product release claims are made here; the lab proves the DECISION contract only.
-
-## Attribution
-
-Scaffold copied from `agent-preferences-lab` (itself from the gateway-claims-lab scaffold); server, web, scripts and safety infrastructure are that scaffold's, rebranded. The domain content (gateway scope engine, third-party weather server, policy editor, scenarios) is new, derived from the AI-DEMO2 weather-mcp use cases UC30/UC31/UC32. No code was imported across repos.
+Safety: loopback Host check (+ `LAB_ALLOWED_HOSTS` behind the lab-proxy), same-origin writes, no outbound network, bounded payloads, `nosniff`, read-only container fs, non-root. The demo OTP and every decision value are labelled demo values. See `docs/safety.md` and `docs/talk-track.md` (generated from the same data the UI reads).

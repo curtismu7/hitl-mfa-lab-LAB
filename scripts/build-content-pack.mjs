@@ -27,11 +27,11 @@ export function buildPack() {
       { id: 'receipts', term: 'Approval receipts', definition: 'Approvals are receipts, not vibes: single-use (consume-on-use, so a replay re-challenges), amount-bound (approving $300 cannot discharge $600), and the MFA credit expires after five minutes.', aliases: ['single-use credit'] },
     ],
     sources: [
-      { id: 'mcp-tools', title: 'Model Context Protocol: tools/call', url: 'https://modelcontextprotocol.io/docs/concepts/tools', kind: 'standard', use: 'The JSON-RPC tool-call shape the gateway scopes.', status: 'not-read', checked: '2026-11-06' },
+      { id: 'mcp-tools', title: 'Model Context Protocol: tools/call', url: 'https://modelcontextprotocol.io/docs/concepts/tools', kind: 'standard', use: 'The JSON-RPC tool-call shape the transfer gate scopes.', status: 'not-read', checked: '2026-11-06' },
     ],
     cards: [
       ...story.scenarios.map((sc, i) => ({ id: `try-${sc.id}`, label: `Scenario ${i + 1}: ${sc.title}`, description: sc.lesson, group: 'try-it', action: { type: 'route', href: `/#scenario-${sc.id}` }, terms: terms[sc.id], story: sid(i + 1) })),
-      { id: 'concept-editor', label: 'Reconfigure the policy live', description: 'Switch the allowed state, add a blocked city, or turn the capability off; the SAME call flips on the next run.', group: 'concept', action: { type: 'route', href: '/#policy' } },
+      { id: 'concept-editor', label: 'Reconfigure the policy live', description: 'Change the amount bands live; the SAME call flips on the next run — a crossing edit falls back to the defaults, never wider.', group: 'concept', action: { type: 'route', href: '/#policy' } },
       { id: 'ref-doctor', label: 'Doctor and health', description: 'Preflight checks and the demo-health/1 endpoint.', group: 'setup', action: { type: 'route', href: '/api/health' } },
     ],
     stories: story.scenarios.map((sc, i) => ({ id: sid(i + 1), title: sc.title, say: sc.lesson })),
