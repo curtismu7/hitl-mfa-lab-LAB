@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A third-party weather MCP server scoped at a mock agent gateway: a live, admin-editable state policy enforced entirely at the edge (UC30/UC31/UC32 mock). No tenant, no outbound network.",
+  "description": "HITL MFA Lab: an agent's money movement gated by a mock authorization policy \u2014 amount bands (PERMIT / HITL consent / MFA step-up / DENY) plus CIBA out-of-band approval on the user's own device. Standalone mock of the AI-DEMO2 HITL track (UC7/UC8/UC22).",
   "license": "MIT",
   "workspaces": [
     "server",

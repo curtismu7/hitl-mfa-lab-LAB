@@ -10,7 +10,8 @@ const ZERO16 = '0'.repeat(16);
 export function parseTraceparent(v) {
   if (typeof v !== 'string' || v.length !== 55) return null;
   const m = TP.exec(v);
-  return m && m[1] !== ZERO32 && m[2] !== ZERO16 ? { traceId: m[1], parentId: m[2], flags: m[3] } : null;
+  // all-ones flags are forbidden by the W3C spec
+  return m && m[1] !== ZERO32 && m[2] !== ZERO16 && m[3] !== 'ff' ? { traceId: m[1], parentId: m[2], flags: m[3] } : null;
 }
 export const formatTraceparent = (traceId, spanId, flags = '01') => `00-${traceId}-${spanId}-${flags}`;
 

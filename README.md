@@ -10,6 +10,8 @@ Three ideas:
 
 Mock + Real (rule 19): Mock is fully offline (mock gate, mock MFA, mock CIBA). Real toggle mechanics follow rule 19: unconfigured, it is disabled with a how-to tooltip and `POST /api/mode` answers 409. In this build Real is RESERVED — the toggle reports a configured `HMLAB_REAL_*` env, but no live policy-engine data path is wired yet; Mock is the story.
 
+Scaffold copied from mcp-gateway-lab-LAB (fork rule 4 attribution); every surface here is this lab's own. No cross-repo imports.
+
 ## Run it
 
 - `./scripts/run.sh` — host-run on port 7680 (Node >= 26), opens the browser.

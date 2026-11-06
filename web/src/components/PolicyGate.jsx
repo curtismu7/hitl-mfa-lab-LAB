@@ -73,7 +73,9 @@ function BandsEditor({ current, onSaved }) {
   );
 }
 
-/** The agent call: pick an amount, run the gated transfer. A 428 opens the matching human beat. */
+/** The agent call: pick an amount, run the gated transfer. A 428 opens the matching human beat.
+ * onBlocked carries the FULL payload so the retry after the human beat repeats exactly the call
+ * the human was shown — not some other amount the scenario happened to use. */
 function AgentCall({ tools, onResult, onBlocked }) {
   const [tool, setTool] = useState(tools[0].name);
   const [amount, setAmount] = useState("300");
@@ -86,9 +88,11 @@ function AgentCall({ tools, onResult, onBlocked }) {
     const res = await runTool(payload).catch(() => ({ ok: false, status: 0, body: {} }));
     if (res.ok || res.body.decision) {
       onResult(res.body);
-      if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") onBlocked("mfa", Number(amount));
-      else if (res.body.error === "ciba_required") onBlocked("ciba", Number(amount));
-      else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", Number(amount));
+      const beatPayload = { tool, amount: Number(amount) };
+      if (declared) beatPayload.step_up_method = declared;
+      if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") onBlocked("mfa", beatPayload);
+      else if (res.body.error === "ciba_required") onBlocked("ciba", beatPayload);
+      else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", beatPayload);
     } else setFail(`Could not call the gate (${res.body.detail || res.body.error || res.status}).`);
   };
   return (
@@ -114,7 +118,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
 }
 
 /** The HITL consent beat: a modal the agent "surfaces"; approving mints the receipt and auto-retries. */
-function ConsentModal({ open, amount, onApproved, onDenied }) {
+function ConsentModal({ open, amount, onApproved, onDenied, onClose }) {
   if (!open) return null;
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="consent-h" data-testid="consent-modal">
@@ -124,6 +128,7 @@ function ConsentModal({ open, amount, onApproved, onDenied }) {
         <div className="modal__actions">
           <button type="button" data-testid="consent-approve" onClick={onApproved}>Approve</button>
           <button type="button" data-testid="consent-deny" onClick={onDenied}>Deny</button>
+          <button type="button" className="link" onClick={onClose}>Dismiss</button>
         </div>
         <p className="muted">Approving mints a single-use, amount-bound receipt and the call is retried once. Denying leaves it paused.</p>
       </div>
@@ -136,6 +141,7 @@ function MfaModal({ open, amount, onVerified, onClose }) {
   const [challengeId, setChallengeId] = useState(null);
   const [otp, setOtp] = useState("");
   const [msg, setMsg] = useState(null);
+  const [verifying, setVerifying] = useState(false);
   useEffect(() => {
     if (!open) { setChallengeId(null); setOtp(""); setMsg(null); return; }
     startMfa({ amount }).then((r) => {
@@ -145,8 +151,11 @@ function MfaModal({ open, amount, onVerified, onClose }) {
   }, [open, amount]);
   if (!open) return null;
   const verify = async () => {
+    if (verifying) return;
     setMsg(null);
+    setVerifying(true);
     const r = await verifyMfa({ challengeId, otp }).catch(() => ({ ok: false, body: {} }));
+    setVerifying(false);
     if (r.ok) onVerified(r.body.receipt);
     else setMsg(r.body.detail || "Verification failed.");
   };
@@ -160,7 +169,7 @@ function MfaModal({ open, amount, onVerified, onClose }) {
             <label htmlFor="mfa-otp">One-time code (demo OTP: <code>{DEMO_OTP}</code>)</label>
             <input id="mfa-otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
             <div className="modal__actions">
-              <button type="button" data-testid="mfa-verify" onClick={verify}>Verify</button>
+              <button type="button" data-testid="mfa-verify" disabled={verifying} onClick={verify}>Verify</button>
               <button type="button" onClick={onClose}>Dismiss</button>
             </div>
           </>
@@ -178,30 +187,38 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
   const [authReqId, setAuthReqId] = useState(null);
   const [binding, setBinding] = useState(null);
   const [msg, setMsg] = useState(null);
-  const timer = useRef(null);
+  const [decided, setDecided] = useState(false);
+  // The callbacks arrive as fresh inline arrows on every parent render; holding them in a ref
+  // keeps the bc-authorize effect stable (open + amount only) so the auth_req_id survives
+  // any parent re-render — a re-mint would orphan a decision already sent.
+  const callbacks = useRef({ onApproved, onDenied });
+  useEffect(() => { callbacks.current = { onApproved, onDenied }; });
   useEffect(() => {
-    if (!open) { setAuthReqId(null); setBinding(null); setMsg(null); if (timer.current) clearInterval(timer.current); return; }
+    if (!open) { setAuthReqId(null); setBinding(null); setMsg(null); setDecided(false); return; }
     let stop = false;
+    let intervalId = null;
     bcAuthorize({ amount, bindingMessage: `Approve $${amount} transfer` }).then((r) => {
       if (stop) return;
       if (!r.ok) { setMsg(r.body.detail || "Could not start the CIBA request."); return; }
       setAuthReqId(r.body.auth_req_id);
       setBinding(r.body.binding_message);
       // The agent polls (every 2 s); the visitor decides on the phone panel.
-      timer.current = setInterval(async () => {
+      intervalId = setInterval(async () => {
         const p = await pollCiba(r.body.auth_req_id).catch(() => null);
         if (stop || !p) return;
-        if (p.status === "approved") { clearInterval(timer.current); onApproved(p.receiptId); }
-        if (p.status === "denied") { clearInterval(timer.current); onDenied(); }
+        if (p.status === "approved") { clearInterval(intervalId); setDecided(true); callbacks.current.onApproved(p.receiptId); }
+        if (p.status === "denied") { clearInterval(intervalId); setDecided(true); callbacks.current.onDenied(); }
       }, 2000);
     }, () => setMsg("Could not start the CIBA request."));
-    return () => { stop = true; if (timer.current) clearInterval(timer.current); };
-  }, [open, amount, onApproved, onDenied]);
+    return () => { stop = true; if (intervalId) clearInterval(intervalId); };
+  }, [open, amount]);
   if (!open) return null;
   const decide = async (decision) => {
+    if (decided) return;
     setMsg(null);
+    setDecided(true);
     const r = await respondCiba({ authReqId, decision }).catch(() => ({ ok: false, body: {} }));
-    if (!r.ok) setMsg(r.body.detail || "Could not deliver the decision.");
+    if (!r.ok) { setDecided(false); setMsg(r.body.detail || "Could not deliver the decision."); }
     // The agent's next poll picks it up; the modal stays until then.
   };
   return (
@@ -214,8 +231,8 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
             <p className="phone__msg">{visible(binding)}</p>
             <p className="muted">auth_req_id: <code>{visible(authReqId)}</code></p>
             <div className="modal__actions">
-              <button type="button" data-testid="ciba-approve" onClick={() => decide("approved")}>Approve on this device</button>
-              <button type="button" data-testid="ciba-deny" onClick={() => decide("denied")}>Deny</button>
+              <button type="button" data-testid="ciba-approve" disabled={decided} onClick={() => decide("approved")}>Approve on this device</button>
+              <button type="button" data-testid="ciba-deny" disabled={decided} onClick={() => decide("denied")}>Deny</button>
             </div>
           </div>
         ) : <p className="muted">{msg || "Requesting approval (bc-authorize)..."}</p>}
@@ -259,28 +276,33 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
     if (sc.declaredStepUp) payload.step_up_method = sc.declaredStepUp;
     const res = await runTool(payload).catch(() => ({ ok: false, status: 0, body: {} }));
     if (drop()) return;
-    if (res.ok || res.body.decision) setRun(res.body); else { setRun(null); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
+    if (res.ok || res.body.decision) {
+      setRun(res.body);
+      if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") setBeat({ kind: "mfa", payload });
+      else if (res.body.error === "ciba_required") setBeat({ kind: "ciba", payload });
+      else if (res.body.error === "mcp_hitl_required") setBeat({ kind: "hitl", payload });
+    } else { setRun(null); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
   }, [story]);
 
   useEffect(() => { setRun(null); setBeat(null); }, [resetSignal]);
   useEffect(() => { runScenario(id); }, [id, resetSignal, runScenario]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onResult = useCallback((r) => setRun(r), []);
-  const onBlocked = useCallback((kind, amount) => setBeat({ kind, amount }), []);
-  // After a human beat is satisfied, retry the SAME call once with the minted receipt in the store.
+  const onBlocked = useCallback((kind, payload) => setBeat({ kind, payload }), []);
+  // After a human beat is satisfied, retry the EXACT call that was blocked — the beat stores
+  // the full payload (tool, amount, step_up_method), so the visitor's manual amount is what
+  // the human approved and what the retry repeats.
   const retrySame = useCallback(() => {
-    const sc = story.scenarios.find((s) => s.id === id) || story.scenarios[0];
-    const payload = { tool: sc.call.tool, amount: sc.call.amount };
-    if (sc.declaredStepUp) payload.step_up_method = sc.declaredStepUp;
-    runTool(payload).then((res) => { if (res.ok || res.body.decision) setRun(res.body); }, () => {});
-  }, [id, story]);
+    if (!beat?.payload) return;
+    runTool(beat.payload).then((res) => { if (res.ok || res.body.decision) setRun(res.body); }, () => {});
+  }, [beat]);
 
   return (
     <div className="gate">
       <section className="panel" aria-labelledby="sc-h">
         <h2 id="sc-h">Scenarios</h2>
         <div className="seg" role="group" aria-label="Scenario">
-          {story.scenarios.map((s) => <button key={s.id} type="button" aria-pressed={s.id === id} onClick={() => { setId(s.id); if (onSelect) onSelect(s.id); }}>{s.title}</button>)}
+          {story.scenarios.map((s) => <button key={s.id} type="button" aria-pressed={s.id === id} onClick={() => { setBeat(null); setId(s.id); if (onSelect) onSelect(s.id); }}>{s.title}</button>)}
         </div>
         <p className="lesson" data-testid="lesson">{scenario.lesson}</p>
       </section>
@@ -290,15 +312,16 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
         <Verdict run={run} />
         {run && <Hops hops={run.hops} traceId={run.traceId} />}
       </section>
-      {bands && <BandsEditor current={bands} onSaved={(b) => { setBandsState(b); runScenario(id, { applyBands: false }); }} />}
+      {bands && <BandsEditor current={bands} onSaved={(b) => { setBandsState(b); if (!beat) runScenario(id, { applyBands: false }); }} />}
       <AgentCall tools={story.tools} onResult={onResult} onBlocked={onBlocked} />
-      <ConsentModal open={beat?.kind === "hitl"} amount={beat?.amount}
+      <ConsentModal open={beat?.kind === "hitl"} amount={beat?.payload?.amount}
         onApproved={() => { setBeat(null); retrySame(); }}
-        onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "consent_denied", detail: "The human denied the request; the transfer stays paused." }); }} />
-      <MfaModal open={beat?.kind === "mfa"} amount={beat?.amount}
+        onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "consent_denied", detail: "The human denied the request; the transfer stays paused." }); }}
+        onClose={() => setBeat(null)} />
+      <MfaModal open={beat?.kind === "mfa"} amount={beat?.payload?.amount}
         onVerified={() => { setBeat(null); retrySame(); }}
         onClose={() => setBeat(null)} />
-      <CibaModal open={beat?.kind === "ciba"} amount={beat?.amount}
+      <CibaModal open={beat?.kind === "ciba"} amount={beat?.payload?.amount}
         onApproved={() => { setBeat(null); retrySame(); }}
         onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "ciba_denied", detail: "The user denied out-of-band; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />

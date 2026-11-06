@@ -88,6 +88,7 @@ export function createApp({
     const body = req.body;
     if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
     if (typeof body.amount !== 'number' && typeof body.amount !== 'string') return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number' });
+    if (typeof body.amount === 'string' && body.amount.trim() === '') return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number' });
     const amount = Number(body.amount);
     if (!Number.isFinite(amount) || amount < 0 || amount > LIMITS.amount) return res.status(400).json({ error: 'bad_amount', detail: 'amount must be a non-negative number within range' });
     const tool = typeof body.tool === 'string' && body.tool ? body.tool.slice(0, 64) : 'create_transfer';
@@ -179,9 +180,12 @@ export function createApp({
   }));
 
   // MFA step-up (UC7): start a device challenge, submit the demo OTP, mint the TTL credit.
+  // The challenge carries the amount so the minted credit is amount-bound: an unbounded
+  // receipt could discharge ANY transfer up to the deny ceiling.
   api.post('/mfa/challenge', withWorkspace((ws, req, res) => {
     const body = req.body || {};
-    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) ? body.amount : null;
+    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) && body.amount >= 0 && body.amount <= LIMITS.amount ? body.amount : null;
+    if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range — the credit is amount-bound' });
     const v = workspaces.state(ws);
     const challenge = { id: `mfa-${Date.now().toString(36)}`, workspace: ws, amount, tool: 'create_transfer', status: 'pending', method: 'p1mfa', createdAt: Date.now() };
     challenges.push(challenge);
@@ -206,7 +210,8 @@ export function createApp({
   // phone panel; the agent polls. Approval mints the amount-bound HITL receipt.
   api.post('/ciba/bc-authorize', withWorkspace((ws, req, res) => {
     const body = req.body || {};
-    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) ? body.amount : null;
+    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) && body.amount >= 0 && body.amount <= LIMITS.amount ? body.amount : null;
+    if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range — the approval receipt is amount-bound' });
     const v = workspaces.state(ws);
     const r = v.ciba.bcAuthorize({ bindingMessage: typeof body.bindingMessage === 'string' ? body.bindingMessage : `Approve $${amount ?? ''} transfer`.trim(), amount, tool: 'create_transfer' });
     return res.json({ ...r, workspace: ws });

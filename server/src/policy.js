@@ -169,8 +169,12 @@ export function createCibaStore({ now = Date.now, expiresIn = 300, interval = 2,
     approve(authReqId, { receiptStore = null } = {}) {
       const r = requests.get(String(authReqId).slice(0, LIMITS.authReqId));
       if (!r) return { status: 'unknown' };
+      // Idempotent: an already-approved request returns its EXISTING receipt — a double-approve
+      // must never mint a second single-use receipt (one human approval, one discharge).
+      if (r.status === 'approved') return { status: 'approved', receiptId: r.receiptId, bindingMessage: r.bindingMessage };
       if (r.status === 'denied') return { status: 'denied' };
-      if (r.status === 'expired') return { status: 'expired' };
+      // The TTL applies to the approval too: an approve after expires_in is an expiry, not a mint.
+      if (now() - r.createdAt > expiresIn * 1000) { r.status = 'expired'; return { status: 'expired' }; }
       r.status = 'approved';
       r.approvedAt = now();
       // The CIBA approval IS a human-in-the-loop event: mint an amount-bound receipt that
@@ -184,6 +188,9 @@ export function createCibaStore({ now = Date.now, expiresIn = 300, interval = 2,
     deny(authReqId) {
       const r = requests.get(String(authReqId).slice(0, LIMITS.authReqId));
       if (!r) return { status: 'unknown' };
+      // An already-approved request stays approved: its receipt exists and deny must not
+      // flip the audit state under it.
+      if (r.status === 'approved') return { status: 'approved', receiptId: r.receiptId };
       r.status = 'denied';
       return { status: 'denied' };
     },

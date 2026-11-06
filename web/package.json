@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "React + Vite UI for the MCP gateway lab. Talks only to its own origin.",
+  "description": "React + Vite UI for the HITL MFA lab.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -254,6 +254,35 @@ test('bands, receipts and runs are per workspace and Reset clears only that work
   });
 });
 
+test('challenges without an amount are refused: the receipt must stay amount-bound', async () => {
+  await withServer(async (url) => {
+    const post = (p, body, ws = 'w10') => fetch(`${url}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url, 'x-workspace': ws }, body: JSON.stringify(body) });
+    assert.equal((await post('/api/mfa/challenge', {}, 'w10')).status, 400);
+    assert.equal((await post('/api/ciba/bc-authorize', {}, 'w10')).status, 400);
+    // empty/whitespace amount strings are refused, not treated as 0
+    assert.equal((await post('/api/transfer', { amount: '' }, 'w10')).status, 400);
+    assert.equal((await post('/api/transfer', { amount: '   ' }, 'w10')).status, 400);
+  });
+});
+
+test('CIBA double-approve mints ONE receipt; approval is amount-bound to the challenged amount', async () => {
+  await withServer(async (url) => {
+    const post = (p, body, ws = 'w11') => fetch(`${url}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url, 'x-workspace': ws }, body: JSON.stringify(body) });
+    const get = (p, ws) => fetch(`${url}${p}`, { headers: { 'x-workspace': ws } });
+    const ba = await (await post('/api/ciba/bc-authorize', { amount: 300 }, 'w11')).json();
+    const r1 = await (await post('/api/ciba/respond', { authReqId: ba.auth_req_id, decision: 'approved' }, 'w11')).json();
+    const r2 = await (await post('/api/ciba/respond', { authReqId: ba.auth_req_id, decision: 'approved' }, 'w11')).json();
+    assert.equal(r2.receiptId, r1.receiptId, 'idempotent');
+    const pol = await (await get('/api/policy', 'w11')).json();
+    assert.equal(pol.receipts.filter((x) => x.kind === 'hitl' && !x.used).length, 1, 'exactly one live receipt');
+    // the retry permits; the SECOND retry re-challenges (single receipt)
+    const ok = await (await post('/api/transfer', { tool: 'create_transfer', amount: 300, step_up_method: 'ciba' }, 'w11')).json();
+    assert.equal(ok.decision, 'PERMIT');
+    const again = await post('/api/transfer', { tool: 'create_transfer', amount: 300, step_up_method: 'ciba' }, 'w11');
+    assert.equal(again.status, 428, 'consume-on-use');
+  });
+});
+
 test('bad inputs are refused with short JSON', async () => {
   await withServer(async (url) => {
     const post = (p, body, ws = 'w9') => fetch(`${url}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url, 'x-workspace': ws }, body: JSON.stringify(body) });

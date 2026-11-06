@@ -14,7 +14,7 @@ export const TABS = [
 const TAIL = "Nothing here calls a real gateway, identity provider or tenant.";
 export const BANNER_UNKNOWN = `SIMULATED / HOSTED SIMULATION: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
 const BANNER_LOCAL = `SIMULATED: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
-const BANNER_HOSTED = `HOSTED SIMULATION: a mock agent gateway, a mock policy store and a mock third-party weather MCP server. ${TAIL}`;
+const BANNER_HOSTED = `HOSTED SIMULATION: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
 
 const hashParts = () => {
   const h = window.location.hash.replace("#", "");

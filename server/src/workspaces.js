@@ -16,8 +16,12 @@ export function createWorkspaces({ max = 500, ttlMs = 60 * 60 * 1000, now = Date
   const map = new Map(); // id -> { runs, at, bands, receipts, ciba }
   const sweep = () => {
     const t = now();
-    for (const [id, v] of map) { if (t - v.at > ttlMs) map.delete(id); else break; }
-    while (map.size > max) map.delete(map.keys().next().value);
+    // Evict by oldest TOUCH (insertion order lies: a long-lived active workspace is touched
+    // constantly), and consider every entry — no early break.
+    const expired = [...map.entries()].filter(([, v]) => t - v.at > ttlMs).sort((a, b) => a[1].at - b[1].at);
+    for (const [id] of expired) map.delete(id);
+    const byAge = [...map.entries()].sort((a, b) => a[1].at - b[1].at);
+    while (map.size > max) { const [id] = byAge.shift(); map.delete(id); }
   };
   const blank = () => ({
     runs: [],

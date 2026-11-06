@@ -54,8 +54,9 @@ function mockFetch() {
       const b = JSON.parse(opts.body);
       const bands = override.bands || DEFAULT_BANDS;
       const amt = Number(b.amount);
-      // a retried call after a human beat is satisfied carries a receipt and permits
-      if (override.approved) return json({ decision: "PERMIT", reason: "receipt presented", tool: b.tool, amount: amt, receipt: "hitl-receipt-0001", receiptKind: "hitl", bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, 200);
+      // a retried call after a human beat is satisfied carries a receipt and permits — but ONLY
+      // for the exact amount the human was shown; a retry at a different amount re-challenges.
+      if (override.approved && override.approvedFor === amt) return json({ decision: "PERMIT", reason: "receipt presented", tool: b.tool, amount: amt, receipt: "hitl-receipt-0001", receiptKind: "hitl", bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, 200);
       let decision = "PERMIT"; let status = 200; let reason = `amount ${amt} is below the confirm threshold`; let error; let detail; let step_up_method;
       if (b.step_up_method) { decision = "STEP_UP"; status = 428; reason = "sensitive agent-initiated action"; error = b.step_up_method === "ciba" ? "ciba_required" : "mcp_step_up_required"; step_up_method = b.step_up_method; }
       else if (amt > bands.denyCeilingUsd) { decision = "DENY"; status = 403; reason = `amount ${amt} exceeds the hard limit of ${bands.denyCeilingUsd}`; }
@@ -67,12 +68,12 @@ function mockFetch() {
     if (url === "/api/mfa/verify") {
       const b = JSON.parse(opts.body);
       if (b.otp !== "123123") return json({ error: "bad_otp", detail: "wrong code" }, 401);
-      override.approved = true;
+      override.approved = true; override.approvedFor = 600;
       return json({ challenge: { id: b.challengeId, status: "verified" }, receipt: mfaReceipt, workspace: "t" });
     }
     if (url === "/api/ciba/bc-authorize") return json({ auth_req_id: "ciba-0001-abc", expires_in: 300, interval: 2, binding_message: `Approve $${JSON.parse(opts.body).amount} transfer`, workspace: "t" });
     if (url.startsWith("/api/ciba/poll/")) return json({ status: override.cibaApproved ? "approved" : "pending", ...(override.cibaApproved ? { receiptId: "hitl-receipt-0002" } : {}), workspace: "t" });
-    if (url === "/api/ciba/respond") { const d = JSON.parse(opts.body).decision; if (d === "approved") { override.cibaApproved = true; override.approved = true; } return json({ status: d, receiptId: "hitl-receipt-0002", workspace: "t" }); }
+    if (url === "/api/ciba/respond") { const d = JSON.parse(opts.body).decision; if (d === "approved") { override.cibaApproved = true; override.approved = true; override.approvedFor = 150; } return json({ status: d, receiptId: "hitl-receipt-0002", workspace: "t" }); }
     if (url === "/api/ciba/pending") return json({ pending: [], workspace: "t" });
     if (url === "/api/runs") return json({ workspace: "t", runs: [] });
     if (url === "/api/reset") { override = {}; return json({ reset: "ok" }); }
@@ -127,7 +128,7 @@ describe("transfer gate tab", () => {
     await userEvent.click(screen.getByTestId("call-run"));
     await waitFor(() => expect(screen.getByTestId("consent-modal")).toBeInTheDocument());
     expect(screen.getByTestId("consent-amount")).toHaveTextContent("$300");
-    override.approved = true; // the consent approval mints a receipt in the store
+    override.approved = true; override.approvedFor = 300; // the consent approval mints a $300-bound receipt
     await userEvent.click(screen.getByTestId("consent-approve"));
     await waitFor(() => expect(screen.queryByTestId("consent-modal")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"));

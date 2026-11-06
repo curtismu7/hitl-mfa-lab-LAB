@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_CAST, VERTICALS, fill, unfilled } from '../src/cast.js';
 import { rawStory, buildStory } from '../src/story.js';
 import { classifyObligation, classifyObligations, evaluateAmountPolicy, normalizeBands, createReceiptStore, createCibaStore, DEFAULT_BANDS } from '../src/policy.js';
+import { parseTraceparent } from '../src/trace.js';
 import { scanHosts } from '../src/safety.js';
 import { rawDiagram } from '../src/diagramData.js';
 
@@ -185,4 +186,29 @@ test('hostile input is bounded and inert', () => {
   assert.equal(ciba.poll({}.toString).status, 'unknown');
   assert.equal(evaluateAmountPolicy({ amount: 1e308, bands: DEFAULT_BANDS }).decision, 'DENY');
   assert.equal(evaluateAmountPolicy({ amount: '  600  ', bands: DEFAULT_BANDS }).decision, 'STEP_UP', 'numeric strings are accepted');
+});
+
+test('CIBA approve is idempotent and honours the TTL; deny cannot flip an approval', () => {
+  let t = 0;
+  const receipts = createReceiptStore({ now: () => t });
+  const ciba = createCibaStore({ now: () => t });
+  const ba = ciba.bcAuthorize({ amount: 150 });
+  const first = ciba.approve(ba.auth_req_id, { receiptStore: receipts });
+  assert.equal(first.status, 'approved');
+  const second = ciba.approve(ba.auth_req_id, { receiptStore: receipts });
+  assert.equal(second.receiptId, first.receiptId, 'double-approve returns the SAME receipt');
+  assert.equal(receipts.all().filter((r) => !r.used).length, 1, 'no replay multiplier');
+  // TTL on approve: expiry is not gated on an intervening poll
+  const ba2 = ciba.bcAuthorize({ amount: 150 });
+  t += 400 * 1000;
+  assert.equal(ciba.approve(ba2.auth_req_id, { receiptStore: receipts }).status, 'expired');
+  // deny cannot flip an approval that already minted its receipt
+  const ba3 = ciba.bcAuthorize({ amount: 150 });
+  ciba.approve(ba3.auth_req_id, { receiptStore: receipts });
+  assert.equal(ciba.deny(ba3.auth_req_id).status, 'approved');
+  assert.equal(ciba.poll(ba3.auth_req_id).status, 'approved');
+});
+
+test('traceparent with all-ones flags is refused', () => {
+  assert.equal(parseTraceparent(`00-${'a'.repeat(32)}-${'b'.repeat(16)}-ff`), null);
 });
