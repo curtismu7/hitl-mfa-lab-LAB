@@ -1,0 +1,212 @@
+/* ── DiagramControls ─────────────────────────────────────────────────────────
+ * Shared styles for the three shared diagram UI components:
+ *   .dc-*   — DiagramControls toolbar
+ *   .dl-*   — DiagramLegend
+ *   .pfb-*  — PathFilterBar
+ *
+ * Source: extracted from ArchitectureDiagramPage.css (.arch-zoom-*, .arch-ctrl-*)
+ * and Phase266ArchitecturePage.css (.p266-filter-*). Renamed with namespaced
+ * prefixes; no functional changes.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── DiagramControls toolbar ─────────────────────────────────────────────── */
+
+.dc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+/* Zoom block */
+.dc-zoom-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-sm);
+  color: #263746;
+  transition: background 0.15s;
+}
+.dc-zoom-btn:hover:not(:disabled) { background: #e0e2e4; }
+.dc-zoom-btn:disabled { color: #909ea4; cursor: not-allowed; }
+
+.dc-zoom-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--th-text);
+  min-width: 2.8rem;
+  text-align: center;
+}
+
+.dc-zoom-reset {
+  font-size: 0.95rem;
+  color: #5c646b;
+}
+
+/* Divider between zoom and step blocks */
+.dc-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: #e0e2e4;
+  margin: 0 0.2rem;
+}
+
+/* Step nav block */
+.dc-step-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #12538d;
+  background: #fcfcfc;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 0.25rem 0.6rem;
+}
+.dc-step-label--paused {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.dc-ctrl-btn {
+  padding: 0.25rem 0.7rem;
+  border: none;
+  border-radius: var(--btn-radius);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.dc-ctrl-btn:disabled {
+  background: #eff0f1 !important;
+  color: #051727 !important;
+  cursor: not-allowed;
+}
+
+.dc-ctrl-btn--simulate { background: #d20e0f; color: #fff; }
+.dc-ctrl-btn--simulate:hover:not(:disabled) { background: #003366; }
+
+.dc-ctrl-btn--pause  { background: #92400e; color: #fff; }
+.dc-ctrl-btn--pause:hover:not(:disabled)  { background: #d97706; }
+
+.dc-ctrl-btn--resume { background: #166534; color: #fff; }
+.dc-ctrl-btn--resume:hover:not(:disabled) { background: #16a34a; }
+
+.dc-ctrl-btn--next   { background: #d20e0f; color: #fff; }
+.dc-ctrl-btn--next:hover:not(:disabled)   { background: #003366; }
+
+.dc-ctrl-btn--stop   { background: #e0e2e4; color: #263746; }
+.dc-ctrl-btn--stop:hover:not(:disabled)   { background: #cdd1d4; }
+
+.dc-ctrl-btn--prev   { background: #fff; color: #263746; border: 1px solid #e0e2e4; }
+.dc-ctrl-btn--prev:hover:not(:disabled)   { background: #eff0f1; }
+
+.dc-ctrl-btn--reset  { background: #fff; color: #263746; border: 1px solid #cdd1d4; }
+.dc-ctrl-btn--reset:hover:not(:disabled)  { background: #eff0f1; }
+
+/* .dc-steptime* rules live in StepTimeSelector.css (owned by that component). */
+
+/* ── DiagramLegend ────────────────────────────────────────────────────────── */
+
+.dl-legend {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.dl-legend--column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.dl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--th-text);
+  transition: opacity 0.2s;
+}
+
+.dl-item--dimmed {
+  opacity: 0.4;
+}
+
+.dl-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── PathFilterBar ────────────────────────────────────────────────────────── */
+
+.pfb-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pfb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 2px solid #e0e2e4;
+  border-radius: var(--btn-radius);
+  background: #ffffff;
+  color: #263746;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.pfb-btn:not([data-active="true"]):hover {
+  border-color: #909ea4;
+  color: #263746;
+}
+
+.pfb-btn[data-active="true"] {
+  background: #263746;
+  border-color: var(--th-text);
+  color: #ffffff;
+}
+
+.pfb-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* SequenceDiagramPage paints a literal-light page (inline #fff / #f7f8f8), so keep its ink light-mode in dark too. */
+:root[data-theme="dark"] .seq-paper {
+  color: #020617;
+  --th-bg-card: #ffffff;
+  --th-bg-inset: #eff0f1;
+  --th-border: #dbe2ea;
+  --th-text: #020617;
+  --th-text-muted: #020617;
+  --th-text-faint: #020617;
+  --bs-heading-color: #020617;
+  --bs-link-color-rgb: 3, 105, 161;
+}
+/* The export bar's link reads --th-status-info-text: unpinned it stays dark-mode
+   light blue on the pinned-light inset above (1.65:1). Pin on the bar, not on
+   .seq-paper — the sequence diagram's participant boxes share the token and
+   need the dark-theme pair (see SequenceFlowDiagram.css .sfx-part). */
+:root[data-theme="dark"] .seq-paper .deb-bar {
+  --th-status-info-text: #051727;
+}

@@ -1,0 +1,13 @@
+# TLS for the app's own host (a wildcard certificate covers one label only, so a host two levels down needs its own).
+# cert-manager issues it through the ClusterIssuer the owner names (CLUSTER_ISSUER; DNS-01 on the SE cluster). No default.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hitl-mfa-lab
+spec:
+  secretName: hitl-mfa-lab-tls
+  dnsNames:
+    - __SE_HOST__
+  issuerRef:
+    kind: ClusterIssuer
+    name: __CLUSTER_ISSUER__

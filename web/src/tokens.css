@@ -1,0 +1,63 @@
+/* Theme tokens the diagram files read. Light by default, dark with the OS setting. No purple. */
+:root {
+  --th-bg-page: #f6f7f9;
+  --th-bg-card: #ffffff;
+  --th-bg-inset: #eff0f1;
+  --th-bg-hover: #eef2f7;
+  --th-text: #051727;
+  --th-text-muted: #4a5a6a;
+  --th-border: #dbe2ea;
+  --th-border-strong: #c3cdd9;
+  --th-status-info: #12538d;
+  --th-status-info-text: #051727;
+  --th-status-info-bg: #fcfcfc;
+  --th-status-warning: #f59e0b;
+  --th-status-warning-text: #78350f;
+  --th-status-warning-bg: #fef3c7;
+  --th-accent: #b5231a;
+  --th-ok-text: #14532d;
+  --th-ok-bg: #dcfce7;
+  --th-ok: #1a7f37;
+  --th-deny-text: #7f1d1d;
+  --th-deny-bg: #fee2e2;
+  --th-deny: #b5231a;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --btn-radius: var(--radius-lg);
+  --font-size-3xs: 10px;
+  --font-size-2xs: 12px;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --th-bg-page: #0b1220;
+    --th-bg-card: #131c2e;
+    --th-bg-inset: #1b2540;
+    --th-bg-hover: #1b2540;
+    --th-text: #ffffff;
+    --th-text-muted: #b6c2d2;
+    --th-border: #2a3550;
+    --th-border-strong: #34405e;
+    --th-status-info: #12538d;
+    --th-status-info-text: #93c5fd;
+    --th-status-info-bg: #16233c;
+    --th-status-warning: #f59e0b;
+    --th-status-warning-text: #fcd34d;
+    --th-status-warning-bg: #3a2a10;
+    --th-accent: #ef6b61;
+    --th-ok-text: #bbf7d0;
+    --th-ok-bg: #12301f;
+    --th-ok: #4ade80;
+    --th-deny-text: #fecaca;
+    --th-deny-bg: #3b1414;
+    --th-deny: #ef6b61;
+  }
+}

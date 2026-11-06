@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hitl-mfa-lab
+  labels: { app: hitl-mfa-lab }
+spec:
+  selector: { app: hitl-mfa-lab }
+  ports:
+    - { name: http, port: 80, targetPort: http }

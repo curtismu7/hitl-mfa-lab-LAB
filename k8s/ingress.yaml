@@ -1,0 +1,25 @@
+# The host, the ingress class and the TLS secret come from k8s/deploy.sh (SE_HOST, INGRESS_CLASS). There is deliberately no default.
+# The app checks the Host header for loopback names only, so the ingress rewrites it to 127.0.0.1:7680 for the pod (the container port matches this lab's 7680-7689 block).
+# This is a PUBLIC ingress (mock-only, no secrets, no tenant), so it is rate limited. DNS for the host is created from this
+# ingress by the cluster's external-dns; the certificate comes from k8s/certificate.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hitl-mfa-lab
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-vhost: "127.0.0.1:7680"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-connections: "30"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+spec:
+  ingressClassName: __INGRESS_CLASS__
+  tls:
+    - hosts: [__SE_HOST__]
+      secretName: hitl-mfa-lab-tls
+  rules:
+    - host: __SE_HOST__
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: hitl-mfa-lab, port: { name: http } } } }

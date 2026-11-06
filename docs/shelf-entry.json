@@ -1,0 +1,18 @@
+{
+  "demos": [
+    {
+      "id": "hitl-mfa-lab",
+      "name": "HITL MFA Lab",
+      "kind": "Demo",
+      "description": "A third-party weather MCP server scoped at an agent gateway: a live, admin-editable state policy is enforced entirely at the edge — a denied call never reaches the backend, and switching the policy flips the SAME call, no restart. Standalone mock of the AI-DEMO2 weather-mcp showcase (UC30/UC31/UC32). Mock + owner-run Real.",
+      "url": "http://localhost:7680",
+      "healthPath": "/api/health",
+      "composeFile": "hitl-mfa-lab/docker-compose.yml",
+      "composeOverlays": [],
+      "pingProducts": [],
+      "notes": "Host-run: ./scripts/run.sh (port 7680). Mock needs no tenant and no credentials. Docker: HOST_PORT=7680 docker compose up --build -d (published on 127.0.0.1 only). The scope contract mirrors the AI-DEMO2 tx-weather-scope gateway policy (UC30 permit, UC31 deny, UC32 live reconfigure). Repo: curtismu7/hitl-mfa-lab. Catalog id pending owner assignment.",
+      "repo": "https://github.com/curtismu7/hitl-mfa-lab",
+      "where": "installed"
+    }
+  ]
+}

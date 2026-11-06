@@ -1,0 +1,24 @@
+# OrbStack:  HOST_PORT=7680 docker compose up --build -d   ->  http://127.0.0.1:7680
+# The server binds 0.0.0.0 INSIDE the container (HMLAB_BIND is the opt-in), but the port is published on loopback only.
+# Do not change the 127.0.0.1 below. HOST_PORT must stay in 7680-7689.
+name: hitl-mfa-lab
+
+services:
+  hitl-mfa-lab:
+    build: .
+    ports:
+      - "127.0.0.1:${HOST_PORT:-7680}:7680"
+    environment:
+      PORT: "7680"
+      HMLAB_BIND: 0.0.0.0
+      LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-hitl-mfa-lab.local.ping-devops.com}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7680/api/health').then(r=>r.json()).then(j=>process.exit(j.schema==='demo-health/1'&&j.state==='ready'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      start_period: 5s
+      start_interval: 2s
+      timeout: 5s
+      retries: 3

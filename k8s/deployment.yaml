@@ -1,0 +1,54 @@
+# MOCK-ONLY hosted build of hitl-mfa-lab for the SE cluster (rule 18). Same image as the standalone, MODE=mock,
+# HMLAB_HOSTED=1 (the banner then says HOSTED SIMULATION). No secrets, no tenant ids, no volumes with data.
+# Placeholders (__IMAGE__, __SE_HOST__, __INGRESS_CLASS__, __CLUSTER_ISSUER__) are filled by k8s/deploy.sh; nothing here names a real host or registry path.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hitl-mfa-lab
+  labels: { app: hitl-mfa-lab }
+spec:
+  replicas: 1   # the only state is a small in-memory list of evaluations per workspace id (X-Workspace), so visitors are isolated by workspace; one pod because that state is not shared
+  selector:
+    matchLabels: { app: hitl-mfa-lab }
+  template:
+    metadata:
+      labels: { app: hitl-mfa-lab }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: app
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 7680 }
+          env:
+            - { name: MODE, value: mock }
+            - { name: HMLAB_HOSTED, value: "1" }
+            - { name: HMLAB_PUBLIC_HOST, value: __SE_HOST__ }
+            - { name: PORT, value: "7680" }
+            - { name: HMLAB_BIND, value: 0.0.0.0 }
+          readinessProbe:
+            httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: "127.0.0.1:7680" }] }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: "127.0.0.1:7680" }] }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }

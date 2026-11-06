@@ -1,0 +1,216 @@
+{
+  "schema": "demo-content-pack/1",
+  "id": "hitl-mfa-lab",
+  "title": "HITL MFA Lab",
+  "version": "0.1.0",
+  "demo": {
+    "id": "hitl-mfa-lab",
+    "name": "HITL MFA Lab",
+    "catalog": "D999",
+    "baseUrl": "http://localhost:7680",
+    "doctor": "/api/health",
+    "tags": [
+      "hitl",
+      "mfa",
+      "ciba",
+      "authorize",
+      "policy",
+      "mock-only"
+    ]
+  },
+  "glossary": [
+    {
+      "id": "hitl",
+      "term": "HITL (human-in-the-loop) consent",
+      "definition": "The policy can require explicit human approval before an agent action runs: the agent pauses, the human decides, and only a verified approval receipt lets the retried call through. The receipt is single-use and amount-bound.",
+      "aliases": [
+        "human approval",
+        "consent gate"
+      ]
+    },
+    {
+      "id": "mfa",
+      "term": "MFA step-up",
+      "definition": "At or above the MFA band the policy returns a STEP_UP obligation: the human must complete device MFA (demo OTP 123123) before the action runs. Step-up outranks the consent gate — highest gate wins.",
+      "aliases": [
+        "step-up",
+        "step-up MFA"
+      ]
+    },
+    {
+      "id": "ciba",
+      "term": "CIBA (out-of-band approval)",
+      "definition": "Client-Initiated Backchannel Authentication: for a sensitive agent-initiated action the policy requests approval on the user's own device (bc-authorize, then poll) — triggered by the agent context, NOT by amount. A compromised browser or rogue agent cannot self-approve.",
+      "aliases": [
+        "out-of-band",
+        "decoupled approval"
+      ]
+    },
+    {
+      "id": "deny",
+      "term": "Hard DENY",
+      "definition": "Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it.",
+      "aliases": [
+        "hard limit",
+        "ceiling"
+      ]
+    },
+    {
+      "id": "receipts",
+      "term": "Approval receipts",
+      "definition": "Approvals are receipts, not vibes: single-use (consume-on-use, so a replay re-challenges), amount-bound (approving $300 cannot discharge $600), and the MFA credit expires after five minutes.",
+      "aliases": [
+        "single-use credit"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "mcp-tools",
+      "title": "Model Context Protocol: tools/call",
+      "url": "https://modelcontextprotocol.io/docs/concepts/tools",
+      "kind": "standard",
+      "use": "The JSON-RPC tool-call shape the gateway scopes.",
+      "status": "not-read",
+      "checked": "2026-11-06"
+    }
+  ],
+  "cards": [
+    {
+      "id": "try-consent-hitl",
+      "label": "Scenario 1: HITL: $300 needs human consent",
+      "description": "The amount clears the confirm bar but not the MFA bar: the agent pauses, a consent modal is surfaced, and only an explicit human approval (a single-use receipt) lets it proceed.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-consent-hitl"
+      },
+      "terms": [
+        "hitl"
+      ],
+      "story": "S01"
+    },
+    {
+      "id": "try-mfa-step-up",
+      "label": "Scenario 2: MFA: $600 steps up to device MFA",
+      "description": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-mfa-step-up"
+      },
+      "terms": [
+        "mfa"
+      ],
+      "story": "S02"
+    },
+    {
+      "id": "try-ciba-150",
+      "label": "Scenario 3: CIBA: $150, approved out-of-band on the phone",
+      "description": "Note the amount — below every band. A person in-browser would sail through. But an AGENT moving money is a sensitive agent-initiated action, so approval is requested out-of-band (bc-authorize, then poll) on the user's phone. Amount-independent by design.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-ciba-150"
+      },
+      "terms": [
+        "ciba"
+      ],
+      "story": "S03"
+    },
+    {
+      "id": "try-deny-ceiling",
+      "label": "Scenario 4: DENY: $2500 exceeds the hard limit",
+      "description": "Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-deny-ceiling"
+      },
+      "terms": [
+        "deny"
+      ],
+      "story": "S04"
+    },
+    {
+      "id": "try-receipt-replay",
+      "label": "Scenario 5: REPLAY: the same approved receipt cannot be used twice",
+      "description": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-receipt-replay"
+      },
+      "terms": [
+        "receipts"
+      ],
+      "story": "S05"
+    },
+    {
+      "id": "try-receipt-amount-bound",
+      "label": "Scenario 6: BOUND: approving $300 does not authorize $600",
+      "description": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-receipt-amount-bound"
+      },
+      "terms": [
+        "receipts"
+      ],
+      "story": "S06"
+    },
+    {
+      "id": "concept-editor",
+      "label": "Reconfigure the policy live",
+      "description": "Switch the allowed state, add a blocked city, or turn the capability off; the SAME call flips on the next run.",
+      "group": "concept",
+      "action": {
+        "type": "route",
+        "href": "/#policy"
+      }
+    },
+    {
+      "id": "ref-doctor",
+      "label": "Doctor and health",
+      "description": "Preflight checks and the demo-health/1 endpoint.",
+      "group": "setup",
+      "action": {
+        "type": "route",
+        "href": "/api/health"
+      }
+    }
+  ],
+  "stories": [
+    {
+      "id": "S01",
+      "title": "HITL: $300 needs human consent",
+      "say": "The amount clears the confirm bar but not the MFA bar: the agent pauses, a consent modal is surfaced, and only an explicit human approval (a single-use receipt) lets it proceed."
+    },
+    {
+      "id": "S02",
+      "title": "MFA: $600 steps up to device MFA",
+      "say": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT."
+    },
+    {
+      "id": "S03",
+      "title": "CIBA: $150, approved out-of-band on the phone",
+      "say": "Note the amount — below every band. A person in-browser would sail through. But an AGENT moving money is a sensitive agent-initiated action, so approval is requested out-of-band (bc-authorize, then poll) on the user's phone. Amount-independent by design."
+    },
+    {
+      "id": "S04",
+      "title": "DENY: $2500 exceeds the hard limit",
+      "say": "Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it."
+    },
+    {
+      "id": "S05",
+      "title": "REPLAY: the same approved receipt cannot be used twice",
+      "say": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer."
+    },
+    {
+      "id": "S06",
+      "title": "BOUND: approving $300 does not authorize $600",
+      "say": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA."
+    }
+  ]
+}

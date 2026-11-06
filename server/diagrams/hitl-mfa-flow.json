@@ -1,0 +1,158 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "hitl-mfa-flow",
+  "title": "HITL & MFA: agent transfer to human approval",
+  "lede": "The agent attempts a transfer; the mock policy decides by amount band or agent context — PERMIT, human consent (HITL), MFA step-up, CIBA out-of-band approval, or DENY — and the call proceeds only when the right human receipt is presented. Mock only.",
+  "groups": {
+    "actor": {
+      "label": "Actors",
+      "color": "dark"
+    },
+    "policy": {
+      "label": "Policy (mock)",
+      "color": "red"
+    },
+    "human": {
+      "label": "The human",
+      "color": "blue"
+    },
+    "resource": {
+      "label": "Resources",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "agent",
+      "label": "AI agent",
+      "group": "actor",
+      "x": 0,
+      "y": 240
+    },
+    {
+      "id": "policy",
+      "label": "Transfer gate: amount bands + agent context",
+      "group": "policy",
+      "x": 300,
+      "y": 240
+    },
+    {
+      "id": "consent",
+      "label": "HITL consent modal",
+      "group": "human",
+      "x": 600,
+      "y": 80
+    },
+    {
+      "id": "mfa",
+      "label": "MFA step-up (device OTP)",
+      "group": "human",
+      "x": 600,
+      "y": 240
+    },
+    {
+      "id": "phone",
+      "label": "CIBA: out-of-band on the phone",
+      "group": "human",
+      "x": 600,
+      "y": 400
+    },
+    {
+      "id": "transfer",
+      "label": "Transfer executes (receipt required)",
+      "group": "resource",
+      "x": 900,
+      "y": 240
+    }
+  ],
+  "edges": [
+    {
+      "source": "agent",
+      "target": "policy",
+      "label": "tools/call create_transfer $amount"
+    },
+    {
+      "source": "policy",
+      "target": "consent",
+      "label": "HITL_CONSENT (confirm band)"
+    },
+    {
+      "source": "policy",
+      "target": "mfa",
+      "label": "STEP_UP (MFA band)"
+    },
+    {
+      "source": "policy",
+      "target": "phone",
+      "label": "CIBA: agent context, amount-independent"
+    },
+    {
+      "source": "policy",
+      "target": "transfer",
+      "label": "PERMIT (below the confirm bar)"
+    },
+    {
+      "source": "consent",
+      "target": "policy",
+      "label": "single-use, amount-bound receipt",
+      "dashed": true
+    },
+    {
+      "source": "mfa",
+      "target": "policy",
+      "label": "step-up credit (5 min TTL)",
+      "dashed": true
+    },
+    {
+      "source": "phone",
+      "target": "policy",
+      "label": "approval polled, receipt minted",
+      "dashed": true
+    },
+    {
+      "source": "policy",
+      "target": "transfer",
+      "label": "receipt presented: transfer executes"
+    }
+  ],
+  "steps": [
+    {
+      "title": "Agent attempts the transfer",
+      "what": "The agent calls create_transfer with an amount — the policy evaluates it against the bands and the agent context.",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "The band decides the gate",
+      "what": "Below the confirm bar it permits; the confirm band returns HITL_CONSENT; the MFA band returns STEP_UP (which outranks consent); above the ceiling it denies outright.",
+      "edges": [
+        1,
+        2
+      ]
+    },
+    {
+      "title": "CIBA for agent-context actions",
+      "what": "For a sensitive agent-initiated action the policy requests out-of-band approval regardless of amount: bc-authorize, the user approves on the phone, the agent polls.",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "The human decides",
+      "what": "Consent modal, device OTP, or the phone: each path ends in a receipt — single-use, amount-bound, the MFA credit with a five-minute TTL.",
+      "edges": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "title": "Receipt presented, transfer executes",
+      "what": "Only the right receipt lets the retried call through — consumed on use, so it can never approve a second transfer.",
+      "edges": [
+        8
+      ]
+    }
+  ]
+}
