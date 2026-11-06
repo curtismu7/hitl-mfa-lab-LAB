@@ -62,8 +62,10 @@ function mockFetch() {
       else if (amt > bands.denyCeilingUsd) { decision = "DENY"; status = 403; reason = `amount ${amt} exceeds the hard limit of ${bands.denyCeilingUsd}`; }
       else if (amt >= bands.mfaUsd) { decision = "STEP_UP"; status = 428; reason = `amount ${amt} is at or above the MFA threshold`; error = "mcp_step_up_required"; step_up_method = "p1mfa"; }
       else if (amt >= bands.confirmUsd) { decision = "HITL"; status = 428; reason = `amount ${amt} requires human consent`; error = "mcp_hitl_required"; }
-      return json({ decision, reason, tool: b.tool, amount: amt, ...(error ? { error, detail: `${error}: the human beat is required`, ...(step_up_method ? { step_up_method } : {}) } : { receipt: "hitl-receipt-0001", receiptKind: "hitl" }), bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, status);
+      const challengeId = error === "mcp_hitl_required" ? "consent-1" : undefined;
+      return json({ decision, reason, tool: b.tool, amount: amt, ...(error ? { error, detail: `${error}: the human beat is required`, ...(step_up_method ? { step_up_method } : {}), ...(challengeId ? { challengeId } : {}) } : { receipt: "hitl-receipt-0001", receiptKind: "hitl" }), bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, status);
     }
+    if (url === "/api/consent/respond") { const d = JSON.parse(opts.body).decision; if (d === "approved") { override.approved = true; override.approvedFor = 300; } return json({ challenge: { id: JSON.parse(opts.body).challengeId, status: d }, ...(d === "approved" ? { receipt: { id: "hitl-receipt-0001", amountBound: 300, kind: "hitl" } } : {}), workspace: "t" }); }
     if (url === "/api/mfa/challenge") return json({ challenge: { id: "mfa-1", method: "p1mfa", status: "pending", devices: [{ id: "dev-1", type: "OTP", label: "Demo device (OTP)" }] }, workspace: "t" });
     if (url === "/api/mfa/verify") {
       const b = JSON.parse(opts.body);
@@ -128,8 +130,7 @@ describe("transfer gate tab", () => {
     await userEvent.click(screen.getByTestId("call-run"));
     await waitFor(() => expect(screen.getByTestId("consent-modal")).toBeInTheDocument());
     expect(screen.getByTestId("consent-amount")).toHaveTextContent("$300");
-    override.approved = true; override.approvedFor = 300; // the consent approval mints a $300-bound receipt
-    await userEvent.click(screen.getByTestId("consent-approve"));
+    await userEvent.click(screen.getByTestId("consent-approve")); // the respond call mints the $300-bound receipt
     await waitFor(() => expect(screen.queryByTestId("consent-modal")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"));
     expect(screen.getByTestId("receipt")).toHaveTextContent("hitl-receipt-0001");

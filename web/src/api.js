@@ -37,6 +37,9 @@ export async function runTool(payload) {
 export const startMfa = (payload) => postJson("/api/mfa/challenge", payload);
 export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
 
+// HITL consent (UC8): respond to the surfaced challenge; approval mints the receipt.
+export const respondConsent = (payload) => postJson("/api/consent/respond", payload);
+
 // CIBA (UC22): bc-authorize, poll, and the out-of-band approve/deny from the phone panel.
 export const bcAuthorize = (payload) => postJson("/api/ciba/bc-authorize", payload);
 export const pollCiba = (authReqId) => getJson(`/api/ciba/poll/${encodeURIComponent(authReqId)}`);

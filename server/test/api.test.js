@@ -254,6 +254,29 @@ test('bands, receipts and runs are per workspace and Reset clears only that work
   });
 });
 
+test('UC8 full loop: the 428 carries a challengeId; /consent/respond mints the receipt; the retry permits', async () => {
+  await withServer(async (url) => {
+    const post = (p, body, ws = 'w12') => fetch(`${url}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url, 'x-workspace': ws }, body: JSON.stringify(body) });
+    const res = await post('/api/transfer', { tool: 'create_transfer', amount: 300 }, 'w12');
+    assert.equal(res.status, 428);
+    const j = await res.json();
+    assert.match(j.challengeId, /^consent-/);
+    // approve the challenge
+    const resp = await (await post('/api/consent/respond', { challengeId: j.challengeId, decision: 'approved' }, 'w12')).json();
+    assert.ok(resp.receipt.id);
+    assert.equal(resp.receipt.amountBound, 300);
+    // the retry presents it and permits
+    const ok = await (await post('/api/transfer', { tool: 'create_transfer', amount: 300 }, 'w12')).json();
+    assert.equal(ok.decision, 'PERMIT');
+    assert.equal(ok.receipt, resp.receipt.id);
+    // replay re-challenges
+    const again = await post('/api/transfer', { tool: 'create_transfer', amount: 300 }, 'w12');
+    assert.equal(again.status, 428);
+    // unknown challenge id 404s; bad decision 400s
+    assert.equal((await post('/api/consent/respond', { challengeId: 'consent-nope', decision: 'approved' }, 'w12')).status, 404);
+  });
+});
+
 test('challenges without an amount are refused: the receipt must stay amount-bound', async () => {
   await withServer(async (url) => {
     const post = (p, body, ws = 'w10') => fetch(`${url}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url, 'x-workspace': ws }, body: JSON.stringify(body) });

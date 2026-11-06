@@ -134,7 +134,11 @@ export function createApp({
         receipt = credit.id;
         decision = 'PERMIT';
       } else {
-        block = { status: 428, error: 'mcp_hitl_required', detail: 'HITL consent: the transfer runs only after an explicit human approval.' };
+        // Mint the consent challenge: the UI surfaces it, and /consent/respond mints the receipt.
+        const challenge = { id: `consent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, workspace: ws, amount, tool, status: 'pending', createdAt: Date.now() };
+        challenges.push(challenge);
+        if (challenges.length > LIMITS.challenges) challenges.shift();
+        block = { status: 428, error: 'mcp_hitl_required', detail: 'HITL consent: the transfer runs only after an explicit human approval.', challengeId: challenge.id };
       }
     }
 
@@ -145,7 +149,7 @@ export function createApp({
     if (block) {
       return res.status(block.status).json({
         decision, reason: result.reason, tool, amount,
-        error: block.error, detail: block.detail, ...(block.step_up_method ? { step_up_method: block.step_up_method } : {}),
+        error: block.error, detail: block.detail, ...(block.step_up_method ? { step_up_method: block.step_up_method } : {}), ...(block.challengeId ? { challengeId: block.challengeId } : {}),
         bands, workspace: ws, traceId: trace.traceId, hops,
       });
     }

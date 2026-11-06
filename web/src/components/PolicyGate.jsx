@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Json from "./Json";
-import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba } from "../api";
+import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, respondConsent } from "../api";
 import { visible } from "../safeText";
 
 const STATUS_CLASS = { measured: "tag tag--ok", inferred: "tag", UNVERIFIED: "tag tag--warn" };
@@ -91,6 +91,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
       const beatPayload = { tool, amount: Number(amount) };
       if (declared) beatPayload.step_up_method = declared;
       if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") onBlocked("mfa", beatPayload);
+      else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", beatPayload, res.body.challengeId);
       else if (res.body.error === "ciba_required") onBlocked("ciba", beatPayload);
       else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", beatPayload);
     } else setFail(`Could not call the gate (${res.body.detail || res.body.error || res.status}).`);
@@ -117,17 +118,28 @@ function AgentCall({ tools, onResult, onBlocked }) {
   );
 }
 
-/** The HITL consent beat: a modal the agent "surfaces"; approving mints the receipt and auto-retries. */
-function ConsentModal({ open, amount, onApproved, onDenied, onClose }) {
+/** The HITL consent beat: a modal the agent "surfaces"; approving responds to the challenge
+ * (which mints the single-use, amount-bound receipt) and the call auto-retries. */
+function ConsentModal({ open, amount, challengeId, onApproved, onDenied, onClose }) {
+  const [deciding, setDeciding] = useState(false);
   if (!open) return null;
+  const decide = async (decision) => {
+    if (deciding || !challengeId) return;
+    setDeciding(true);
+    const r = await respondConsent({ challengeId, decision }).catch(() => ({ ok: false, body: {} }));
+    setDeciding(false);
+    if (!r.ok) return;
+    if (decision === "approved") onApproved();
+    else onDenied();
+  };
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="consent-h" data-testid="consent-modal">
       <div className="modal__card">
         <h3 id="consent-h">Human approval required</h3>
         <p>The agent wants to transfer <strong data-testid="consent-amount">${amount}</strong>. The policy requires explicit human consent before it runs — the agent is paused.</p>
         <div className="modal__actions">
-          <button type="button" data-testid="consent-approve" onClick={onApproved}>Approve</button>
-          <button type="button" data-testid="consent-deny" onClick={onDenied}>Deny</button>
+          <button type="button" data-testid="consent-approve" disabled={deciding} onClick={() => decide("approved")}>Approve</button>
+          <button type="button" data-testid="consent-deny" disabled={deciding} onClick={() => decide("denied")}>Deny</button>
           <button type="button" className="link" onClick={onClose}>Dismiss</button>
         </div>
         <p className="muted">Approving mints a single-use, amount-bound receipt and the call is retried once. Denying leaves it paused.</p>
@@ -280,7 +292,7 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
       setRun(res.body);
       if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") setBeat({ kind: "mfa", payload });
       else if (res.body.error === "ciba_required") setBeat({ kind: "ciba", payload });
-      else if (res.body.error === "mcp_hitl_required") setBeat({ kind: "hitl", payload });
+      else if (res.body.error === "mcp_hitl_required") setBeat({ kind: "hitl", payload, challengeId: res.body.challengeId });
     } else { setRun(null); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
   }, [story]);
 
@@ -288,7 +300,7 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
   useEffect(() => { runScenario(id); }, [id, resetSignal, runScenario]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onResult = useCallback((r) => setRun(r), []);
-  const onBlocked = useCallback((kind, payload) => setBeat({ kind, payload }), []);
+  const onBlocked = useCallback((kind, payload, challengeId) => setBeat({ kind, payload, challengeId }), []);
   // After a human beat is satisfied, retry the EXACT call that was blocked — the beat stores
   // the full payload (tool, amount, step_up_method), so the visitor's manual amount is what
   // the human approved and what the retry repeats.
@@ -314,7 +326,7 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
       </section>
       {bands && <BandsEditor current={bands} onSaved={(b) => { setBandsState(b); if (!beat) runScenario(id, { applyBands: false }); }} />}
       <AgentCall tools={story.tools} onResult={onResult} onBlocked={onBlocked} />
-      <ConsentModal open={beat?.kind === "hitl"} amount={beat?.payload?.amount}
+      <ConsentModal open={beat?.kind === "hitl"} amount={beat?.payload?.amount} challengeId={beat?.challengeId}
         onApproved={() => { setBeat(null); retrySame(); }}
         onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "consent_denied", detail: "The human denied the request; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />
