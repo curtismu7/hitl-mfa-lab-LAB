@@ -7,11 +7,11 @@
       "description": "An agent's money movement gated by a mock authorization policy: amount bands decide PERMIT, human consent (HITL), MFA step-up or hard DENY, and CIBA requests out-of-band approval on the user's own phone for a sensitive agent-initiated action — regardless of amount. Approval receipts are single-use and amount-bound. Standalone mock of the AI-DEMO2 HITL track (UC7/UC8/UC22). Mock + owner-run Real.",
       "url": "http://localhost:7680",
       "healthPath": "/api/health",
-      "composeFile": "hitl-mfa-lab/docker-compose.yml",
+      "composeFile": "hitl-mfa-lab-LAB/docker-compose.yml",
       "composeOverlays": [],
       "pingProducts": [],
-      "notes": "Host-run: ./scripts/run.sh (port 7680). Mock needs no tenant and no credentials. Docker: HOST_PORT=7680 docker compose up --build -d (published on 127.0.0.1 only). The decision contract mirrors the AI-DEMO2 transfer gate ($300 consent, $600 step-up, $2500 deny), authorizeObligations and hitlCredit, enforced live 2026-11-06. Repo: curtismu7/hitl-mfa-lab. Catalog id D119 (assigned 2026-11-06).",
-      "repo": "https://github.com/curtismu7/hitl-mfa-lab",
+      "notes": "Host-run: ./scripts/run.sh (port 7680). Mock needs no tenant and no credentials. Docker: HOST_PORT=7680 docker compose up --build -d (published on 127.0.0.1 only). The decision contract mirrors the AI-DEMO2 transfer gate ($300 consent, $600 step-up, $2500 deny), authorizeObligations and hitlCredit, enforced live 2026-11-06. Repo: curtismu7/hitl-mfa-lab-LAB. Catalog id D119 (assigned 2026-11-06).",
+      "repo": "https://github.com/curtismu7/hitl-mfa-lab-LAB",
       "where": "installed"
     }
   ]
