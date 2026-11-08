@@ -5,6 +5,7 @@ name: hitl-mfa-lab
 
 services:
   hitl-mfa-lab:
+    restart: unless-stopped
     build: .
     ports:
       - "127.0.0.1:${HOST_PORT:-7680}:7680"
