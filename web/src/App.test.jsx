@@ -40,6 +40,7 @@ function mockFetch() {
     const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
     if (url.startsWith("/api/scenarios")) return override.scenarios ? override.scenarios() : json(STORY);
     if (url === "/api/info") return override.info ? override.info() : json({ mode: "mock", simulated: true, hosted: false });
+    if (url === "/api/shelf") return json({ shelfUrl: "https://shelf.example:8443" });
     if (url.startsWith("/api/diagram")) return json(DIAGRAM);
     if (url === "/api/policy" && (!opts.method || opts.method === "GET")) {
       return json({ bands: override.bands || DEFAULT_BANDS, receipts: [], workspace: "t" });
@@ -87,6 +88,11 @@ beforeEach(() => { override = {}; mockFetch(); window.location.hash = ""; });
 const ready = async () => { render(<App />); await screen.findByText("HITL: $300 needs human consent"); await screen.findByTestId("verdict"); };
 
 describe("shell", () => {
+  it("shows the Shelf button in the header, linking to the shelf URL from /api/shelf", async () => {
+    await ready();
+    const link = await screen.findByRole("link", { name: "Shelf" });
+    expect(link).toHaveAttribute("href", "https://shelf.example:8443");
+  });
   it("shows the banner, the mode, and sends X-Workspace on API calls", async () => {
     await ready();
     expect(screen.getByTestId("banner")).toHaveTextContent(/^SIMULATED/);

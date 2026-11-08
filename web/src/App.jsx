@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PolicyGate from "./components/PolicyGate";
 import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
+import ShelfLink from "./components/ShelfLink";
 import { getJson, resetWorkspace, setMode } from "./api";
 
 export const TABS = [
@@ -88,6 +89,7 @@ export default function App() {
             {!presenter && story && <p className="intro">{story.intro}</p>}
           </div>
           <div className="head__tools">
+            <ShelfLink />
             <span className="chip" data-testid="mode">Mode: {info ? info.mode : "mock"}{hosted === true ? " (hosted)" : hosted === false ? " (local)" : ""}</span>
             {!presenter && info && (
               <button
