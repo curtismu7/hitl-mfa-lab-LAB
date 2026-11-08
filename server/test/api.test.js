@@ -343,3 +343,13 @@ test('rule 19: POST /api/mode switches (mock) and answers 409 when Real is not c
     assert.equal((await post({})).status, 400);
   });
 });
+
+test('GET /api/shelf is reachable with no web build: returns the SHELF_URL (trailing slash trimmed); POST is not 200', async () => {
+  await withServer(async (url) => {
+    const r = await fetch(`${url}/api/shelf`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { shelfUrl: 'https://shelf.example:8443' });
+    const p = await fetch(`${url}/api/shelf`, { method: 'POST', headers: { 'content-type': 'application/json', origin: url }, body: '{}' });
+    assert.notEqual(p.status, 200);
+  }, { env: { STANDALONE_ENV: '/nonexistent/settings.env', SHELF_URL: 'https://shelf.example:8443/' } });
+});

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { hostCheck, sameOriginWrites } from './safety.js';
 import { createHealth } from './health.js';
+import { mountShelfRoute } from './shelfLink.js';
 import { loadCast, verticalFrom, VERTICALS } from './cast.js';
 import { hostedFrom, modeFrom, realAvailableFrom } from './config.js';
 import { buildStory } from './story.js';
@@ -29,6 +30,7 @@ export function createApp({
   health = createHealth(), configFile = CONFIG, hosted = false,
   workspaces = createWorkspaces({ bands: DEFAULT_BANDS }),
   challenges = [],
+  env = process.env,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -39,6 +41,7 @@ export function createApp({
   const api = express.Router();
   api.use(express.json({ limit: '8kb' }));
   api.use('/health', health.router);
+  mountShelfRoute(api, { env });
   const castFor = (req) => loadCast(configFile, verticalFrom(req.query.vertical));
   // customer.config.json is read on every request so editing it shows up on reload.
   api.get('/scenarios', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ ...buildStory(castFor(req), { hosted }), verticals: Object.keys(VERTICALS), hosted }); });

@@ -72,3 +72,8 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .pat__title { margin: 0 0 4px; font-size: var(--font-size-lg); }
 .app--presenter { font-size: 18px; } .app--presenter .panel h2 { font-size: var(--font-size-xl); } .app--presenter .lesson, .app--presenter .presenter-say, .app--presenter .verdict__reasons { font-size: var(--font-size-lg); }
 .app--presenter .json, .app--presenter .tbl { font-size: var(--font-size-base); }
+
+/* Shelf button (owner request 2026-11-05): opens the demo shelf (launcher); URL from GET /api/shelf. Same look as the shared .shelf-link, on this app's tokens. */
+.shelf-link { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px; border: 1px solid var(--th-border-strong); border-radius: var(--radius-lg); background: var(--th-bg-card); color: var(--th-text); font: inherit; font-weight: 600; text-decoration: none; }
+.shelf-link:hover { border-color: var(--th-accent); }
+.shelf-link:focus-visible { outline: 3px solid var(--th-accent); outline-offset: 2px; }
