@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Json from "./Json";
+import FloatingDialog from "../floating-dialog/FloatingDialog";
 import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, respondConsent } from "../api";
 import { visible } from "../safeText";
 
@@ -133,9 +134,9 @@ function ConsentModal({ open, amount, challengeId, onApproved, onDenied, onClose
     else onDenied();
   };
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="consent-h" data-testid="consent-modal">
+    <FloatingDialog isOpen onClose={onClose} title="Human approval required" testId="consent-modal"
+      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
       <div className="modal__card">
-        <h3 id="consent-h">Human approval required</h3>
         <p>The agent wants to transfer <strong data-testid="consent-amount">${amount}</strong>. The policy requires explicit human consent before it runs — the agent is paused.</p>
         <div className="modal__actions">
           <button type="button" data-testid="consent-approve" disabled={deciding} onClick={() => decide("approved")}>Approve</button>
@@ -144,7 +145,7 @@ function ConsentModal({ open, amount, challengeId, onApproved, onDenied, onClose
         </div>
         <p className="muted">Approving mints a single-use, amount-bound receipt and the call is retried once. Denying leaves it paused.</p>
       </div>
-    </div>
+    </FloatingDialog>
   );
 }
 
@@ -172,9 +173,9 @@ function MfaModal({ open, amount, onVerified, onClose }) {
     else setMsg(r.body.detail || "Verification failed.");
   };
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="mfa-h" data-testid="mfa-modal">
+    <FloatingDialog isOpen onClose={onClose} title="MFA step-up required" testId="mfa-modal"
+      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
       <div className="modal__card">
-        <h3 id="mfa-h">MFA step-up required</h3>
         <p>The policy requires device MFA for <strong>${amount}</strong>. The agent cannot satisfy it — a human must.</p>
         {challengeId ? (
           <>
@@ -189,7 +190,7 @@ function MfaModal({ open, amount, onVerified, onClose }) {
         {msg && challengeId && <p className="field-error" role="alert">{msg}</p>}
         <p className="muted">Verifying mints a step-up credit with a 5-minute TTL, and the call is retried once. The credit is single-use and amount-bound.</p>
       </div>
-    </div>
+    </FloatingDialog>
   );
 }
 
@@ -234,9 +235,9 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
     // The agent's next poll picks it up; the modal stays until then.
   };
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="ciba-h" data-testid="ciba-modal">
+    <FloatingDialog isOpen onClose={onClose} title="CIBA: approval requested out-of-band" testId="ciba-modal"
+      defaultWidth={520} defaultHeight={null} minHeight={200} footer={null}>
       <div className="modal__card">
-        <h3 id="ciba-h">CIBA: approval requested out-of-band</h3>
         <p>The agent has no browser to prompt in. The policy requested decoupled approval for <strong>${amount}</strong> — triggered by the agent context and the sensitivity of the action, not by the amount.</p>
         {authReqId ? (
           <div className="phone" data-testid="ciba-phone" aria-label="The user's phone (mock)">
@@ -252,7 +253,7 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
         <p className="muted">The agent polls for the decision. Approving mints a single-use, amount-bound receipt and the call is retried once.</p>
         <button type="button" className="link" onClick={onClose}>Dismiss</button>
       </div>
-    </div>
+    </FloatingDialog>
   );
 }
 

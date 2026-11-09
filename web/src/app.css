@@ -79,3 +79,5 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .shelf-link:focus-visible { outline: 3px solid var(--th-accent); outline-offset: 2px; }
 /* The vendored ReturnLink uses the shared token names; map them to this app's tokens, for the return link only. */
 .return-link { --border: var(--th-border-strong); --surface: var(--th-bg-card); --text: var(--th-text); --focus: var(--th-status-info); }
+/* The vendored FloatingDialog (src/floating-dialog) uses the shared token names; map them to this app's tokens, for the dialog only. */
+.fd-backdrop, .fd-panel, .fd-placeholder, .fd-popout-document { --surface: var(--th-bg-card); --surface-2: var(--th-bg-inset); --border: var(--th-border-strong); --text: var(--th-text); --focus: var(--th-status-info); --accent: var(--th-accent); --accent-soft: var(--th-bg-hover); --status-warn: var(--th-status-warning); --font-primary: var(--font-sans); --shadow-ink: color-mix(in srgb, var(--th-text-lt) 45%, transparent); }
