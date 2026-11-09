@@ -1,6 +1,9 @@
-# HITL MFA Lab
+# HITL MFA LAB
 
-**Tier: Demo.** An agent attempts a money movement; a mock authorization policy decides by amount band and agent context — PERMIT below the confirm bar, human consent (HITL) in the confirm band, MFA step-up at the MFA bar, hard DENY above the ceiling — and CIBA requests out-of-band approval on the user's own device for a sensitive agent-initiated action, regardless of amount. This is the standalone mock of the AI-DEMO2 HITL track (UC7 / UC8 / UC22 and the `authorizeObligations` / `hitlCredit` / CIBA services) — same decision contract, no real policy engine or tenant.
+Tier: Demo
+Repo: https://github.com/curtismu7/hitl-mfa-lab-LAB
+
+An agent attempts a money movement; a mock authorization policy decides by amount band and agent context — PERMIT below the confirm bar, human consent (HITL) in the confirm band, MFA step-up at the MFA bar, hard DENY above the ceiling — and CIBA requests out-of-band approval on the user's own device for a sensitive agent-initiated action, regardless of amount. This is the standalone mock of the AI-DEMO2 HITL track (UC7 / UC8 / UC22 and the `authorizeObligations` / `hitlCredit` / CIBA services) — same decision contract, no real policy engine or tenant.
 
 Three ideas:
 
@@ -18,6 +21,39 @@ Scaffold copied from mcp-gateway-lab-LAB (fork rule 4 attribution); every surfac
 - Docker: `HOST_PORT=7680 docker compose up --build -d` (published on 127.0.0.1 only).
 - Through the shared lab-proxy: `https://local.ping-devops.com:8443/hitl-mfa-lab/` (never a raw loopback URL).
 - Tests: `npm ci && npm test` — 66 server + 18 web + 5 packaging tests.
+
+## Run from a clone
+
+Prerequisites: Node 26 or newer. Docker only if you use the Docker form. Mock mode needs no tenant, no credentials and no settings file.
+
+```
+git clone https://github.com/curtismu7/hitl-mfa-lab-LAB.git
+cd hitl-mfa-lab-LAB
+npm ci
+npm run build
+npm run doctor
+npm start
+```
+
+Open http://127.0.0.1:7680/ (the server serves the built UI itself). `GET http://127.0.0.1:7680/api/health` answers `demo-health/1`. `./scripts/run.sh` does the same steps in one go.
+
+## Ports, and what to do if the port is taken
+
+```
+Ports: hitl-mfa-lab-LAB listens on 7680 (set with PORT, default 7680).
+Port range for this app: 7680-7689.
+
+If the port is taken:
+1. Find what is using it:
+   lsof -iTCP:7680 -sTCP:LISTEN -n -P
+2. If it is an old copy of this app, stop that process: kill <PID>.
+3. If it is something else, stop it, or start this app on another port in 7680-7689:
+   PORT=<other port> npm start
+   (Docker: HOST_PORT=<other port> docker compose up --build -d)
+4. Do not use 8080, 5173, 3900, 4000, 4400, 4510, 4600-4601, 4840, 18080, 19080 or 19090.
+```
+
+`npm run doctor` reports a port that is taken or outside 7680-7689.
 
 ## Scenarios
 
