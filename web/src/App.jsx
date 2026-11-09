@@ -3,6 +3,9 @@ import PolicyGate from "./components/PolicyGate";
 import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
 import ShelfLink from "./components/ShelfLink";
+import ReturnLink from "./return-link/ReturnLink.jsx";
+import { readReturnContext } from "./return-link/returnTargets.js";
+import { scenarioFor, verticalFor } from "./handoffMap";
 import { getJson, resetWorkspace, setMode } from "./api";
 
 export const TABS = [
@@ -25,12 +28,14 @@ const hashParts = () => {
 };
 
 export default function App() {
-  const [vertical, setVertical] = useState("retail");
+  // Opened from Customer Agent LAB: preselect the matching scenario and vertical (handoffMap.js), once, on load.
+  const [handoff] = useState(() => readReturnContext(window.location.search));
+  const [vertical, setVertical] = useState(() => verticalFor(handoff) || "retail");
   const [story, setStory] = useState(null);
   const [info, setInfo] = useState(undefined); // undefined = loading, null = failed
   const [error, setError] = useState(null);
   const [tab, setTab] = useState(hashParts().tab);
-  const [requested, setRequested] = useState(hashParts().scenario);
+  const [requested, setRequested] = useState(() => hashParts().scenario || scenarioFor(handoff));
   const [presenter, setPresenter] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
   const [resetMsg, setResetMsg] = useState("");
@@ -83,12 +88,14 @@ export default function App() {
     <div className={`app${presenter ? " app--presenter" : ""}`}>
       <header>
         <p className="banner" role="status" data-testid="banner">{banner}</p>
+        <ReturnLink app="hitl-mfa-lab" />
         <div className="head">
           <div>
             <h1>HITL MFA Lab</h1>
             {!presenter && story && <p className="intro">{story.intro}</p>}
           </div>
           <div className="head__tools">
+            <ReturnLink app="hitl-mfa-lab" variant="header" />
             <ShelfLink />
             <span className="chip" data-testid="mode">Mode: {info ? info.mode : "mock"}{hosted === true ? " (hosted)" : hosted === false ? " (local)" : ""}</span>
             {!presenter && info && (
