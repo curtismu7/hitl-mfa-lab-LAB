@@ -9,6 +9,29 @@
  * prefixes; no functional changes.
  * ──────────────────────────────────────────────────────────────────────────── */
 
+/* Colour values for these controls, as tokens (same values as before; no visual change). */
+:root {
+  --dc-ink: #263746;
+  --dc-line: #e0e2e4;
+  --dc-ink-faint: #909ea4;
+  --dc-ink-muted: #5c646b;
+  --dc-step-text: #12538d;
+  --dc-step-bg: #fcfcfc;
+  --dc-step-border: #bfdbfe;
+  --dc-paused-text: #92400e;
+  --dc-paused-bg: #fffbeb;
+  --dc-paused-border: #fde68a;
+  --dc-disabled-bg: #eff0f1;
+  --dc-disabled-text: #051727;
+  --dc-btn-primary: #d20e0f;
+  --dc-white: #ffffff;
+  --dc-btn-primary-hover: #003366;
+  --dc-btn-pause-hover: #d97706;
+  --dc-btn-resume: #166534;
+  --dc-btn-resume-hover: #16a34a;
+  --dc-border-strong: #cdd1d4;
+}
+
 /* ── DiagramControls toolbar ─────────────────────────────────────────────── */
 
 .dc-toolbar {
@@ -28,11 +51,11 @@
   line-height: 1;
   padding: 0.2rem 0.45rem;
   border-radius: var(--radius-sm);
-  color: #263746;
+  color: var(--dc-ink);
   transition: background 0.15s;
 }
-.dc-zoom-btn:hover:not(:disabled) { background: #e0e2e4; }
-.dc-zoom-btn:disabled { color: #909ea4; cursor: not-allowed; }
+.dc-zoom-btn:hover:not(:disabled) { background: var(--dc-line); }
+.dc-zoom-btn:disabled { color: var(--dc-ink-faint); cursor: not-allowed; }
 
 .dc-zoom-label {
   font-size: 0.8rem;
@@ -44,14 +67,14 @@
 
 .dc-zoom-reset {
   font-size: 0.95rem;
-  color: #5c646b;
+  color: var(--dc-ink-muted);
 }
 
 /* Divider between zoom and step blocks */
 .dc-divider {
   width: 1px;
   height: 1.2rem;
-  background: #e0e2e4;
+  background: var(--dc-line);
   margin: 0 0.2rem;
 }
 
@@ -59,16 +82,16 @@
 .dc-step-label {
   font-size: 0.82rem;
   font-weight: 700;
-  color: #12538d;
-  background: #fcfcfc;
-  border: 1px solid #bfdbfe;
+  color: var(--dc-step-text);
+  background: var(--dc-step-bg);
+  border: 1px solid var(--dc-step-border);
   border-radius: 5px;
   padding: 0.25rem 0.6rem;
 }
 .dc-step-label--paused {
-  color: #92400e;
-  background: #fffbeb;
-  border-color: #fde68a;
+  color: var(--dc-paused-text);
+  background: var(--dc-paused-bg);
+  border-color: var(--dc-paused-border);
 }
 
 .dc-ctrl-btn {
@@ -82,31 +105,31 @@
   font-family: inherit;
 }
 .dc-ctrl-btn:disabled {
-  background: #eff0f1 !important;
-  color: #051727 !important;
+  background: var(--dc-disabled-bg);
+  color: var(--dc-disabled-text);
   cursor: not-allowed;
 }
 
-.dc-ctrl-btn--simulate { background: #d20e0f; color: #fff; }
-.dc-ctrl-btn--simulate:hover:not(:disabled) { background: #003366; }
+.dc-ctrl-btn--simulate { background: var(--dc-btn-primary); color: var(--dc-white); }
+.dc-ctrl-btn--simulate:hover:not(:disabled) { background: var(--dc-btn-primary-hover); }
 
-.dc-ctrl-btn--pause  { background: #92400e; color: #fff; }
-.dc-ctrl-btn--pause:hover:not(:disabled)  { background: #d97706; }
+.dc-ctrl-btn--pause  { background: var(--dc-paused-text); color: var(--dc-white); }
+.dc-ctrl-btn--pause:hover:not(:disabled)  { background: var(--dc-btn-pause-hover); }
 
-.dc-ctrl-btn--resume { background: #166534; color: #fff; }
-.dc-ctrl-btn--resume:hover:not(:disabled) { background: #16a34a; }
+.dc-ctrl-btn--resume { background: var(--dc-btn-resume); color: var(--dc-white); }
+.dc-ctrl-btn--resume:hover:not(:disabled) { background: var(--dc-btn-resume-hover); }
 
-.dc-ctrl-btn--next   { background: #d20e0f; color: #fff; }
-.dc-ctrl-btn--next:hover:not(:disabled)   { background: #003366; }
+.dc-ctrl-btn--next   { background: var(--dc-btn-primary); color: var(--dc-white); }
+.dc-ctrl-btn--next:hover:not(:disabled)   { background: var(--dc-btn-primary-hover); }
 
-.dc-ctrl-btn--stop   { background: #e0e2e4; color: #263746; }
-.dc-ctrl-btn--stop:hover:not(:disabled)   { background: #cdd1d4; }
+.dc-ctrl-btn--stop   { background: var(--dc-line); color: var(--dc-ink); }
+.dc-ctrl-btn--stop:hover:not(:disabled)   { background: var(--dc-border-strong); }
 
-.dc-ctrl-btn--prev   { background: #fff; color: #263746; border: 1px solid #e0e2e4; }
-.dc-ctrl-btn--prev:hover:not(:disabled)   { background: #eff0f1; }
+.dc-ctrl-btn--prev   { background: var(--dc-white); color: var(--dc-ink); border: 1px solid var(--dc-line); }
+.dc-ctrl-btn--prev:hover:not(:disabled)   { background: var(--dc-disabled-bg); }
 
-.dc-ctrl-btn--reset  { background: #fff; color: #263746; border: 1px solid #cdd1d4; }
-.dc-ctrl-btn--reset:hover:not(:disabled)  { background: #eff0f1; }
+.dc-ctrl-btn--reset  { background: var(--dc-white); color: var(--dc-ink); border: 1px solid var(--dc-border-strong); }
+.dc-ctrl-btn--reset:hover:not(:disabled)  { background: var(--dc-disabled-bg); }
 
 /* .dc-steptime* rules live in StepTimeSelector.css (owned by that component). */
 
@@ -160,10 +183,10 @@
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  border: 2px solid #e0e2e4;
+  border: 2px solid var(--dc-line);
   border-radius: var(--btn-radius);
-  background: #ffffff;
-  color: #263746;
+  background: var(--dc-white);
+  color: var(--dc-ink);
   font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
@@ -173,14 +196,14 @@
 }
 
 .pfb-btn:not([data-active="true"]):hover {
-  border-color: #909ea4;
-  color: #263746;
+  border-color: var(--dc-ink-faint);
+  color: var(--dc-ink);
 }
 
 .pfb-btn[data-active="true"] {
-  background: #263746;
+  background: var(--dc-ink);
   border-color: var(--th-text);
-  color: #ffffff;
+  color: var(--dc-white);
 }
 
 .pfb-swatch {
@@ -191,9 +214,9 @@
   flex-shrink: 0;
 }
 
-/* SequenceDiagramPage paints a literal-light page (inline #fff / #f7f8f8), so keep its ink light-mode in dark too. */
+/* SequenceDiagramPage paints a literal-light page (inline white and near-white), so keep its ink light-mode in dark too. */
 :root[data-theme="dark"] .seq-paper {
-  color: #020617;
+  color: var(--th-text);
   --th-bg-card: #ffffff;
   --th-bg-inset: #eff0f1;
   --th-border: #dbe2ea;

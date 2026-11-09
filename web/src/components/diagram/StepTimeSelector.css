@@ -1,6 +1,14 @@
 /* StepTimeSelector — step-time (playback dwell) dropdown.
  * Class names keep the .dc-steptime* prefix for backward-compatible styling. */
 
+:root {
+  --dc-border-strong: #cdd1d4;
+  --dc-white: #ffffff;
+  --dc-ink: #263746;
+  --dc-disabled-text: #051727;
+  --dc-select-disabled-bg: #f7f8f8;
+}
+
 .dc-steptime {
   display: inline-flex;
   align-items: center;
@@ -16,14 +24,14 @@
   font-size: 0.78rem;
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-md);
-  border: 1px solid #cdd1d4;
-  background: #fff;
-  color: #263746;
+  border: 1px solid var(--dc-border-strong);
+  background: var(--dc-white);
+  color: var(--dc-ink);
   cursor: pointer;
   font-family: inherit;
 }
 .dc-steptime-select:disabled {
-  color: #051727;
+  color: var(--dc-disabled-text);
   cursor: not-allowed;
-  background: #f7f8f8;
+  background: var(--dc-select-disabled-bg);
 }
