@@ -1,8 +1,12 @@
 @keyframes dstep-flow {
   to { stroke-dashoffset: -20; }
 }
+/* Heavier than React Flow's own ".react-flow__edge.animated path", so this animation replaces its default one. */
+.react-flow .react-flow__edge.dstep-now path { animation: dstep-flow 0.9s linear infinite; }
+/* Same weight as the rule above and later in the file, so it wins without an override flag. */
 @media (prefers-reduced-motion: reduce) {
-  .react-flow__edge path { animation: none !important; }
+  .react-flow .react-flow__edge.animated path,
+  .react-flow .react-flow__edge.dstep-now path { animation: none; }
 }
 
 /* DiagramStepBar.css — the card and caption under the shared DiagramControls toolbar. */
