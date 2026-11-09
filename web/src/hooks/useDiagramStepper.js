@@ -71,13 +71,14 @@ export function useDiagramStepper(total) {
 }
 
 // One look for "activity" on every diagram: a thick dashed accent line whose dashes run along the
-// edge. Edges not reached yet are a fainter, thinner dashed line. CSS keyframes: DiagramStepBar.css.
+// edge. Edges not reached yet are a fainter, thinner dashed line. Keyframes and the animation: DiagramStepBar.css.
 const NOW_STYLE = {
   stroke: "var(--th-status-info)",
   strokeWidth: 5,
   strokeDasharray: "12 8",
-  animation: "dstep-flow 0.9s linear infinite",
 };
+// The dash animation is a class (DiagramStepBar.css), not an inline style, so reduced motion can turn it off.
+const nowEdge = (e) => ({ ...e, animated: true, className: [e.className, "dstep-now"].filter(Boolean).join(" "), style: { ...e.style, ...NOW_STYLE } });
 const FUTURE_STYLE = { opacity: 0.35, strokeWidth: 2.5, strokeDasharray: "8 6" };
 
 /**
@@ -87,7 +88,7 @@ const FUTURE_STYLE = { opacity: 0.35, strokeWidth: 2.5, strokeDasharray: "8 6" }
 export function stepEdges(edges, step) {
   if (step < 0) return edges;
   return edges.map((e, i) => {
-    if (i === step) return { ...e, animated: true, style: { ...e.style, ...NOW_STYLE } };
+    if (i === step) return nowEdge(e);
     if (i > step) return { ...e, style: { ...e.style, ...FUTURE_STYLE } };
     return e;
   });
@@ -103,7 +104,7 @@ export function markNodes(nodes, hotIds) {
 /** Accents the edges at the given indexes (page-driven highlight) and leaves the rest alone. */
 export function markEdges(edges, active) {
   const on = new Set(active);
-  return edges.map((e, i) => (on.has(i) ? { ...e, animated: true, style: { ...e.style, ...NOW_STYLE } } : e));
+  return edges.map((e, i) => (on.has(i) ? nowEdge(e) : e));
 }
 
 /** "Source → Target: label" per edge; `names` maps node id to display text. Edges are objects or [src, tgt, label] tuples. */
