@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App, { BANNER_UNKNOWN } from "./App";
 import { labelOffsets } from "./components/PatternDiagram";
@@ -164,6 +164,39 @@ describe("transfer gate tab", () => {
     await waitFor(() => expect(screen.queryByTestId("ciba-modal")).toBeNull(), { timeout: 6000 });
     await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"), { timeout: 6000 });
   }, 20000);
+  // The three human beats are the shared FloatingDialog (movable title bar, modal), and Escape dismisses each one like Dismiss.
+  it("the consent modal is a FloatingDialog and Escape dismisses it", async () => {
+    await ready();
+    await userEvent.click(screen.getByTestId("call-run"));
+    const d = await screen.findByTestId("consent-modal");
+    expect(d).toHaveAttribute("role", "dialog");
+    expect(d).toHaveAttribute("aria-modal", "true");
+    expect(d).toHaveAccessibleName("Human approval required");
+    expect(within(d).getByTestId("fd-titlebar")).toHaveTextContent("Human approval required");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("consent-modal")).toBeNull());
+  }, 15000);
+  it("the MFA modal is a FloatingDialog and Escape dismisses it", async () => {
+    await ready();
+    await userEvent.clear(screen.getByTestId("call-amount"));
+    await userEvent.type(screen.getByTestId("call-amount"), "600");
+    await userEvent.click(screen.getByTestId("call-run"));
+    const d = await screen.findByTestId("mfa-modal");
+    expect(d).toHaveAccessibleName("MFA step-up required");
+    expect(within(d).getByTestId("fd-titlebar")).toHaveTextContent("MFA step-up required");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("mfa-modal")).toBeNull());
+  }, 15000);
+  it("the CIBA modal is a FloatingDialog and Escape dismisses it", async () => {
+    await ready();
+    await userEvent.selectOptions(screen.getByTestId("call-declared"), "ciba");
+    await userEvent.click(screen.getByTestId("call-run"));
+    const d = await screen.findByTestId("ciba-modal");
+    expect(d).toHaveAccessibleName("CIBA: approval requested out-of-band");
+    expect(within(d).getByTestId("fd-titlebar")).toHaveTextContent("CIBA: approval requested out-of-band");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("ciba-modal")).toBeNull());
+  }, 15000);
 });
 
 describe("diagram tab", () => {
