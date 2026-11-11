@@ -3,6 +3,7 @@ import PolicyGate from "./components/PolicyGate";
 import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
 import ShelfLink from "./components/ShelfLink";
+import TopMenu from "./top-menu/TopMenu";
 import ReturnLink from "./return-link/ReturnLink.jsx";
 import { readReturnContext } from "./return-link/returnTargets.js";
 import { scenarioFor, verticalFor } from "./handoffMap";
@@ -75,6 +76,13 @@ export default function App() {
     setResetMsg(ok ? "Reset: your workspace's bands, receipts and runs are back to defaults." : "Reset failed on the server; the view was reset.");
   }, []);
 
+  const switchMode = useCallback(async (next) => {
+    if (!info || next === info.mode) return;
+    const res = await setMode(next).catch(() => ({ ok: false }));
+    if (res.ok) { window.location.reload(); }
+    else setResetMsg(res.body?.detail || "Could not switch mode.");
+  }, [info]);
+
   const onKeyTab = (e, i) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     const next = TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
@@ -95,35 +103,18 @@ export default function App() {
             {!presenter && story && <p className="intro">{story.intro}</p>}
           </div>
           <div className="head__tools">
-            <ReturnLink app="hitl-mfa-lab" variant="header" />
-            <ShelfLink />
-            <span className="chip" data-testid="mode">Mode: {info ? info.mode : "mock"}{hosted === true ? " (hosted)" : hosted === false ? " (local)" : ""}</span>
-            {!presenter && info && (
-              <button
-                type="button"
-                aria-pressed={info.mode === "real"}
-                data-testid="mode-real"
-                title={info.realAvailable ? "Switch between Mock and Real. Real is owner-run and RESERVED in this build: the toggle reports it, the live-gateway data path is not wired yet." : "Real is not configured: set the HMLAB_REAL_* environment (owner-run). Mock keeps working."}
-                disabled={!info.realAvailable && info.mode !== "real"}
-                onClick={async () => {
-                  const target = info.mode === "real" ? "mock" : "real";
-                  const res = await setMode(target).catch(() => ({ ok: false }));
-                  if (res.ok) { window.location.reload(); }
-                  else setResetMsg(res.body?.detail || "Could not switch mode.");
-                }}
-              >
-                {info.mode === "real" ? "Real (press to switch to Mock)" : "Mock (press to switch to Real)"}
-              </button>
-            )}
-            {!presenter && (
-              <label className="inline">Vertical{" "}
-                <select value={vertical} onChange={(e) => setVertical(e.target.value)}>
-                  {(story ? story.verticals : ["retail"]).map((v) => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </label>
-            )}
-            <button type="button" onClick={reset} data-testid="reset">Reset</button>
-            <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
+            <TopMenu
+              mode={{ value: info?.mode === "real" ? "real" : "mock", onChange: switchMode, realAvailable: info?.realAvailable ?? null, realHint: "Real is owner-run and RESERVED in this build: the toggle reports it, the live-gateway data path is not wired yet." }}
+              vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["retail"] }}
+              present={{ active: presenter, onToggle: () => setPresenter((v) => !v) }}
+              talkTrack={{ active: tab === "talk", onToggle: () => select("talk") }}
+              help={{ href: "https://github.com/curtismu7/hitl-mfa-lab-LAB#readme" }}
+              version={info?.version || null}
+              onReset={reset}
+            >
+              <ReturnLink app="hitl-mfa-lab" variant="header" />
+              <ShelfLink />
+            </TopMenu>
           </div>
         </div>
       </header>

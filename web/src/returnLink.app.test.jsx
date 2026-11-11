@@ -50,7 +50,7 @@ describe("hand-off from Customer Agent LAB", () => {
     const note = screen.getByRole("note", NOTE);
     expect(note.textContent).toContain("UC22");
     expect(screen.getByTestId("banner").nextElementSibling).toBe(note);
-    expect(document.querySelector(".head__tools > button.return-link--header")).not.toBeNull();
+    expect(document.querySelector(".head__tools .top-menu button.return-link--header")).not.toBeNull();
     expect(screen.getAllByRole("button", { name: /Back to Customer Agent LAB/ })).toHaveLength(2);
     await waitFor(() => expect(screen.getByTestId("pg").textContent).toBe("ciba-150"));
     expect(calls).toContain("/api/scenarios?vertical=finance");
@@ -82,3 +82,13 @@ describe("hand-off from Customer Agent LAB", () => {
     expect(returnLinkFor("hitl-mfa-lab").href).toBe("http://127.0.0.1:5603/?returned=hitl-mfa-lab&uc=UC8");
   });
 });
+
+  it("?from=ai-demo-standalone: strip names AI Demo Standalone, Back goes to its proxy path", () => {
+    window.history.replaceState(null, "", "/hitl-mfa-lab/?from=ai-demo-standalone&uc=UC12");
+    const ctx = returnLinkFor("hitl-mfa-lab");
+    expect(ctx.label).toBe("AI Demo Standalone");
+    expect(ctx.uc).toBe("UC12");
+    expect(ctx.href).toBe("/ai-demo-standalone/?returned=hitl-mfa-lab&uc=UC12");
+    window.history.replaceState(null, "", "/?from=ai-demo-standalone&uc=UC12");
+    expect(returnLinkFor("hitl-mfa-lab").href).toBe("http://127.0.0.1:7810/?returned=hitl-mfa-lab&uc=UC12");
+  });
