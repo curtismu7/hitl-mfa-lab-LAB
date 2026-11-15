@@ -45,7 +45,7 @@ label.inline { display: inline-flex; margin-top: 0; font-weight: 400; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button[aria-pressed="true"] { border-color: var(--th-accent); font-weight: 700; box-shadow: inset 0 -3px 0 var(--th-accent); }
 .lesson { margin: 10px 0 0; line-height: 1.5; }
-.json { margin: 4px 0; padding: 10px; background: var(--th-bg-inset); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--font-size-sm); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.json { margin: 4px 0; padding: 10px; background: var(--th-bg-inset); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--font-size-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .tag { display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill); border: 1px solid var(--th-border-strong); background: var(--th-bg-inset); font-size: var(--font-size-2xs); font-weight: 600; }
 .tag--ok { color: var(--th-ok-text); background: var(--th-ok-bg); border-color: var(--th-ok); }
 .tag--warn { color: var(--th-status-warning-text); background: var(--th-status-warning-bg); border-color: var(--th-status-warning); }
