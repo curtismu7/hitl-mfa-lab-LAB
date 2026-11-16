@@ -50,7 +50,8 @@ describe("hand-off from Customer Agent LAB", () => {
     const note = screen.getByRole("note", NOTE);
     expect(note.textContent).toContain("UC22");
     expect(screen.getByTestId("banner").nextElementSibling).toBe(note);
-    expect(document.querySelector(".head__tools .top-menu button.return-link--header")).not.toBeNull();
+    expect(document.querySelector("header.shell-bar .shell-right button.return-link--header")).not.toBeNull(); // header Back in the shell bar TopMenu
+    expect(document.querySelector("main").firstElementChild).toBe(screen.getByTestId("banner")); // shell bar first, then main with the banner first
     expect(screen.getAllByRole("button", { name: /Back to Customer Agent LAB/ })).toHaveLength(2);
     await waitFor(() => expect(screen.getByTestId("pg").textContent).toBe("ciba-150"));
     expect(calls).toContain("/api/scenarios?vertical=finance");

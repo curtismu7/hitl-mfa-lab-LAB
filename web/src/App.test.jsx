@@ -202,7 +202,7 @@ describe("transfer gate tab", () => {
 describe("diagram tab", () => {
   it("draws the boxes from /api/diagram and Simulate highlights a step; Reset clears it", async () => {
     await ready();
-    await userEvent.click(screen.getByRole("tab", { name: "Diagram" }));
+    await userEvent.click(screen.getByRole("link", { name: "Diagram" }));
     expect(await screen.findByText("Transfer gate: amount bands")).toBeInTheDocument();
     expect(calls.some((c) => c.url.startsWith("/api/diagram?vertical=retail"))).toBe(true);
     expect(screen.getByTestId("banner")).toBeInTheDocument();
@@ -217,9 +217,10 @@ describe("diagram tab", () => {
 describe("talk track and presenter mode", () => {
   it("lists the talk track; presenter mode keeps the banner and shows the say-text; Esc leaves", async () => {
     await ready();
-    await userEvent.click(screen.getByRole("tab", { name: "Talk track" }));
+    await userEvent.click(screen.getByRole("link", { name: "Talk track" }));
     expect(screen.getByTestId("talk-track")).toHaveTextContent("Everything is simulated.");
-    await userEvent.click(screen.getByRole("tab", { name: "Transfer gate" }));
+    expect(screen.getByRole("link", { name: "Talk track" })).toHaveAttribute("aria-current", "page"); // shell-nav pill marks the current section
+    await userEvent.click(screen.getByRole("link", { name: "Transfer gate" }));
     await userEvent.keyboard("p");
     expect(await screen.findByTestId("presenter-say")).toHaveTextContent("One policy decides by band.");
     expect(screen.getByTestId("banner")).toHaveTextContent(/^SIMULATED/);
@@ -247,7 +248,7 @@ describe("banner visibility on every tab, presenter mode and hosted mode", () =>
   it("is visible (not hidden, not display:none) on every tab and in presenter mode", async () => {
     await ready();
     for (const name of ["Diagram", "Talk track"]) {
-      await userEvent.click(screen.getByRole("tab", { name }));
+      await userEvent.click(screen.getByRole("link", { name }));
       expect(screen.getByTestId("banner")).toBeVisible();
     }
   });

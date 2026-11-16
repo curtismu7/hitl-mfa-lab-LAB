@@ -27,6 +27,7 @@ export default function DiagramStepBar({ stepper, caption, testId = "diagram-ste
         stepMs={stepper.stepMs}
         onSetStepMs={stepper.setStepMs}
       />
+      {/* ui-pattern: allow P9 the view's primary is Simulate in DiagramControls (dc-ctrl-btn--simulate, red); the checker does not read that class as .primary */}
       <button type="button" className="dstep-reset" onClick={() => {
           stepper.stop();
           window.dispatchEvent(new Event(REFIT_EVENT));
