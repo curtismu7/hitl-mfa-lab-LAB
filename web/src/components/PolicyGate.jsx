@@ -113,7 +113,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
         <option value="p1mfa">p1mfa (device MFA, amount-independent)</option>
         <option value="ciba">ciba (out-of-band on the phone, amount-independent)</option>
       </select>
-      <button type="button" onClick={run} data-testid="call-run">Call as the agent</button>
+      <button type="button" className="primary" onClick={run} data-testid="call-run">Call as the agent</button>
       {fail && <p className="field-error" role="alert">{fail}</p>}
     </section>
   );

@@ -1,15 +1,30 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--th-bg-page); color: var(--th-text); font-family: var(--font-sans); font-size: var(--font-size-base); }
 code { font-family: var(--font-mono); font-size: var(--font-size-2xs); }
-.app { max-width: min(96vw, 2000px); margin: 0 auto; padding: 0 16px 32px; }
-.banner { margin: 0 -16px; padding: 8px 16px; font-size: var(--font-size-sm); color: var(--th-status-warning-text); background: var(--th-status-warning-bg); border-bottom: 1px solid var(--th-status-warning); }
-.head { position: relative; display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; padding: 16px 0 8px; flex-wrap: wrap; }
-.head h1 { margin: 0 0 4px; font-size: var(--font-size-xl); }
+/* No side padding or width cap here: the body already has the 16px gutter, so the shell bar (-16px) runs edge to edge and .page centres the content. */
+.app { padding: 0 0 32px; }
+/* Shell bar (STANDALONE-UI-PATTERNS.md section 1): Core Dark in both themes, Ping Red gradient rule, full-bleed (the -16px
+   cancels the body gutter); wraps at 600px. position: relative anchors the TopMenu sign-in slot. */
+.shell-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 0 -16px; padding: 10px 20px;
+  background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
+.shell-bar h1 { margin: 0; color: var(--on-box); font-size: var(--font-size-lg); }
+.shell-brand { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.02em; }
+.shell-logo { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--accent-gradient); color: var(--on-accent); font: 800 var(--font-size-xs) var(--font-mono); }
+.shell-badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid transparent; background: var(--accent-gradient); color: var(--on-accent); font: 700 var(--font-size-xs) var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.shell-badge--real { background: var(--surface-2); color: var(--status-warn); border-color: var(--status-warn); }
+.shell-nav { display: flex; gap: 4px; flex: 1 1 auto; } /* one row of pills, as in ui-standard-mock; when the bar is full the TopMenu wraps below, not the nav */
+.shell-nav a { padding: 5px 12px; border-radius: var(--radius-pill); border: 1px solid transparent; color: var(--on-box); text-decoration: none; font-size: var(--font-size-sm); font-weight: 500; white-space: nowrap; }
+.shell-nav a:hover { border-color: var(--on-box); }
+.shell-nav a[aria-current="page"] { background: var(--accent-gradient); color: var(--on-accent); font-weight: 600; }
+.shell-bar .shell-right { margin-left: auto; } /* TopMenu renders .top-menu.shell-right; its own layout stays */
+@media (max-width: 600px) { .shell-bar { gap: 10px; padding: 10px 16px; } .shell-nav { order: 3; flex-basis: 100%; } }
+/* Page frame (section 3): one centred 1100px column; the simulation banner is its first child. */
+.page { max-width: 1100px; margin: 0 auto; padding: 4px 0 32px; }
+.page-head { margin: 12px 0; }
 .intro { margin: 0; max-width: 70ch; color: var(--th-text-muted); font-size: var(--font-size-sm); line-height: 1.45; }
-.head__tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .chip { padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid var(--th-border-strong); background: var(--th-bg-inset); font-size: var(--font-size-2xs); }
 button { font: inherit; font-size: var(--font-size-sm); padding: 6px 12px; border-radius: var(--btn-radius); border: 1px solid var(--th-border-strong); background: var(--th-bg-card); color: var(--th-text); cursor: pointer; }
-button:hover { background: var(--th-bg-hover); }
+button:not(.primary):hover { background: var(--th-bg-hover); }
 button:focus-visible { outline: 2px solid var(--th-status-info); outline-offset: 2px; }
 .track { margin: 8px 0; }
 .track__list { list-style: none; display: flex; gap: 8px; padding: 0; margin: 0; flex-wrap: wrap; }
@@ -22,20 +37,15 @@ button:focus-visible { outline: 2px solid var(--th-status-info); outline-offset:
 /* Presenter mode: less chrome, bigger talk track. The simulation banner stays. */
 .app--presenter .track__now h2, .track__now h3 { font-size: var(--font-size-xl); }
 .app--presenter .track__now p { font-size: var(--font-size-lg); line-height: 1.55; }
-.app--presenter .head h1 { font-size: var(--font-size-lg); }
-@media (max-width: 480px) { .head h1 { font-size: var(--font-size-lg); } }
 .views { display: flex; gap: 8px; margin: 8px 0; } .views button[aria-pressed="true"] { border-color: var(--th-accent); font-weight: 700; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .muted { color: var(--th-text-muted); font-size: var(--font-size-sm); }
 .inline { font-size: var(--font-size-sm); display: inline-flex; align-items: center; gap: 6px; }
 select, textarea { font: inherit; font-size: var(--font-size-sm); color: var(--th-text); background: var(--th-bg-card); border: 1px solid var(--th-border-strong); border-radius: var(--radius-md); padding: 6px 8px; }
 textarea { width: 100%; font-family: var(--font-mono); display: block; margin: 4px 0 10px; }
-select:focus-visible, textarea:focus-visible, summary:focus-visible, pre:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--th-status-info); outline-offset: 2px; }
+select:focus-visible, textarea:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid var(--th-status-info); outline-offset: 2px; }
 label { display: block; font-size: var(--font-size-sm); font-weight: 600; margin-top: 6px; }
 label.inline { display: inline-flex; margin-top: 0; font-weight: 400; }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--th-border); margin: 8px 0 12px; overflow-x: auto; }
-.tabs [role="tab"] { border-radius: var(--radius-md) var(--radius-md) 0 0; border-bottom: none; white-space: nowrap; }
-.tabs [role="tab"][aria-selected="true"] { border-color: var(--th-accent); font-weight: 700; background: var(--th-bg-card); box-shadow: inset 0 -3px 0 var(--th-accent); }
 .gate, .posture { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
 .posture > .panel--warn { grid-column: 1 / -1; }
 .panel { border: 1px solid var(--th-border); background: var(--th-bg-card); border-radius: var(--radius-lg); padding: 12px 14px; min-width: 0; }
@@ -77,6 +87,8 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .shelf-link { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px; border: 1px solid var(--th-border-strong); border-radius: var(--radius-lg); background: var(--th-bg-card); color: var(--th-text); font: inherit; font-weight: 600; text-decoration: none; }
 .shelf-link:hover { border-color: var(--th-accent); }
 .shelf-link:focus-visible { outline: 3px solid var(--th-accent); outline-offset: 2px; }
+/* On the Core Dark shell bar the red ring is under 3:1; use the bar's own text colour there (after .shelf-link, same specificity). */
+.shell-bar :focus-visible { outline-color: var(--on-box); }
 /* The vendored ReturnLink uses the shared token names; map them to this app's tokens, for the return link only. */
 .return-link { --border: var(--th-border-strong); --surface: var(--th-bg-card); --text: var(--th-text); --focus: var(--th-status-info); }
 /* The vendored FloatingDialog (src/floating-dialog) uses the shared token names; map them to this app's tokens, for the dialog only. */
