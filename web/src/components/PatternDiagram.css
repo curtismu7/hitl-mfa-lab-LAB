@@ -18,6 +18,8 @@
 .pat-canvas .react-flow__controls-button:hover { background: var(--th-bg-hover); }
 .pat-canvas .react-flow__controls-button svg { fill: currentColor; }
 .pat-canvas .react-flow__background { background: var(--th-bg-card); }
-.pat-elabel { position: absolute; pointer-events: none; padding: 1px 6px; border-radius: var(--radius-sm); border: 1px solid var(--th-border); background: var(--th-bg-card); color: var(--th-text); font-size: 13px; white-space: nowrap; }
-.pat-elabel--now { border-color: var(--th-status-info); font-weight: 700; }
-.pat-elabel--dim { opacity: 0.55; }
+/* Arrow labels are drawn by the diagram kit (../diagram-kit): the walked arrow's label keeps this page's info colour. */
+.pat-canvas { --dk-active: var(--th-status-info); --dk-active-text: var(--th-status-info); }
+/* An expanded box (the kit's .dk-open) is wider and its details read left to right. */
+.pat-node.dk-open { min-width: 18rem; max-width: 22rem; text-align: left; font-weight: 400; }
+.pat-node.dk-open .dk-passport { font-weight: 400; }
