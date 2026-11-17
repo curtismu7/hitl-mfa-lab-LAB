@@ -111,7 +111,7 @@ export function Passport({ p }) {
     setCopy({ state: "", url });
   };
   const list = (title, items, testId) => (
-    <section aria-label={title} data-testid={testId}>
+    <section aria-label={title} data-testid={testId} className={`dk-sec dk-sec--${title === "Outgoing" ? "out" : "in"}`}>
       <h4>{title} · {items.length}</h4>
       {items.length === 0 ? <p className="dk-passport-none">none</p> : (
         <ul className="dk-passport-list">{items.map((x, i) => (
@@ -124,7 +124,7 @@ export function Passport({ p }) {
     <div className="dk-passport nodrag nopan nowheel" data-testid={`dk-passport-${p.id}`} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {p.group && <div><span className="dk-passport-chip">{p.group.label}</span></div>}
       {p.sources.length > 0 && (
-        <section aria-label="Source" data-testid="dk-passport-sources">
+        <section aria-label="Source" data-testid="dk-passport-sources" className="dk-sec dk-sec--source">
           <h4>Source</h4>
           {p.repo && <p className="dk-passport-repo">{p.repo.name} @ {p.repo.rev}</p>}
           <ul>{p.sources.map((s, i) => (
@@ -132,7 +132,7 @@ export function Passport({ p }) {
           ))}</ul>
         </section>
       )}
-      <section aria-label="Reach" data-testid="dk-passport-reach"><h4>Reach</h4><p>Upstream {p.upstream} · Downstream {p.downstream}</p></section>
+      <section aria-label="Reach" data-testid="dk-passport-reach" className="dk-sec dk-sec--reach"><h4>Reach</h4><p><span className="dk-up">Upstream {p.upstream}</span> · <span className="dk-down">Downstream {p.downstream}</span></p></section>
       {list("Outgoing", p.outgoing, "dk-passport-outgoing")}
       {list("Incoming", p.incoming, "dk-passport-incoming")}
       <div className="dk-passport-actions">

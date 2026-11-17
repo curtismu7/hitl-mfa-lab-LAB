@@ -68,6 +68,15 @@ describe("Passport", () => {
     expect(screen.getByTestId("dk-passport-outgoing")).toHaveTextContent("Outgoing · 1"); expect(screen.getByTestId("dk-passport-incoming")).toHaveTextContent("Incoming · 1");
     expect(screen.getByTestId("dk-passport-outgoing").querySelector(".dk-passport-arrow").getAttribute("title")).toBe("a to b");
   });
+  it("marks each section for its colour: Source, Reach, Outgoing and Incoming, with upstream and downstream counts of their own", () => {
+    mountPassport();
+    expect(screen.getByTestId("dk-passport-sources").className).toContain("dk-sec--source");
+    expect(screen.getByTestId("dk-passport-reach").className).toContain("dk-sec--reach");
+    expect(screen.getByTestId("dk-passport-outgoing").className).toContain("dk-sec--out");
+    expect(screen.getByTestId("dk-passport-incoming").className).toContain("dk-sec--in");
+    expect(screen.getByTestId("dk-passport-reach").querySelector(".dk-up")).toHaveTextContent("Upstream 1");
+    expect(screen.getByTestId("dk-passport-reach").querySelector(".dk-down")).toHaveTextContent("Downstream 2");
+  });
   it("leaves out what the box does not have: no chip without a group, no Source without pointers", () => {
     mountPassport("b");
     expect(screen.queryByText("Group G")).toBeNull(); expect(screen.queryByTestId("dk-passport-sources")).toBeNull(); expect(document.querySelector(".dk-passport-chip")).toBeNull();
