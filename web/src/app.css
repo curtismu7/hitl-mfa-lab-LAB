@@ -19,7 +19,7 @@ code { font-family: var(--font-mono); font-size: var(--font-size-2xs); }
 .shell-bar .shell-right { margin-left: auto; } /* TopMenu renders .top-menu.shell-right; its own layout stays */
 @media (max-width: 600px) { .shell-bar { gap: 10px; padding: 10px 16px; } .shell-nav { order: 3; flex-basis: 100%; } }
 /* Page frame (section 3): one centred 1100px column; the simulation banner is its first child. */
-.page { max-width: 1100px; margin: 0 auto; padding: 4px 0 32px; }
+.page { max-width: 2200px; margin: 0 auto; padding: 4px 0 32px; }
 .page-head { margin: 12px 0; }
 .intro { margin: 0; max-width: 70ch; color: var(--th-text-muted); font-size: var(--font-size-sm); line-height: 1.45; }
 .chip { padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid var(--th-border-strong); background: var(--th-bg-inset); font-size: var(--font-size-2xs); }
