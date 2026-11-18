@@ -118,7 +118,7 @@ export default function App() {
             <>
               {presenter && tab !== "talk" && (
                 <aside className="presenter-say" data-testid="presenter-say" aria-label="Talk track">
-                  {story.talkTrack.filter((t) => (tab === "gate" ? ["say-first", "bands", "precedence", "ciba", "receipts", "unverified"] : ["say-first"]).includes(t.id)).map((t) => <p key={t.id}><strong>{t.title}.</strong> {t.say}</p>)}
+                  {story.talkTrack.filter((t) => (tab === "gate" ? ["say-first", "bands", "precedence", "ciba", "receipts", "pingid", "unverified"] : ["say-first"]).includes(t.id)).map((t) => <p key={t.id}><strong>{t.title}.</strong> {t.say}</p>)}
                 </aside>
               )}
               {tab === "gate" && <PolicyGate key={vertical} story={story} resetSignal={resetSignal} requestedId={requested} onSelect={pickScenario} />}

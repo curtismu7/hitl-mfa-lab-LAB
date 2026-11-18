@@ -26,6 +26,10 @@ Approvals are receipts, not vibes: single-use, consume-on-use, and amount-bound 
 
 The step-up code is 123123 — a labelled demo bypass so a presenter can complete MFA without a real device.
 
+## PingID is the real step-up engine behind this
+
+This lab mocks the step-up, but the same contract runs for real with PingID: assign the MFA sign-on policy to the app (out of the box it exists but is assigned to nothing — the enrolment prompt never appears), the user signs in, scans the QR or types the pairing key, and the device shows ACTIVE. Worker-app API pairing is refused — WORKER apps get only the openid resource — so the sign-in path is the enrolment route. The next sign-in steps up: password, push, approve, code. Measured end to end 2026-11-18.
+
 ## What we do not claim
 
 The mock bands and challenge values are demo values; the decision contract follows what we enforced live. No real push infrastructure is simulated beyond the approval panel.
