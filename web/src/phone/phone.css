@@ -1,0 +1,169 @@
+/* Phone: the family's iPhone mock standard. Device chrome colours (bezel, wallpaper, on-device text) are
+   fixed and stay the same in light and dark on purpose — a phone does not re-theme. Token-derived only:
+   no hex literals, no forced-important. Drag/resize/pop-out come from FloatingDialog; this file only paints the
+   device and guarantees readable text on the dark screen. */
+
+/* --- the device --- */
+.phone-dialog.fd-panel {
+  border: 0;
+  border-top: 0;
+  border-radius: 48px;
+  background: var(--box-dark);
+  color: var(--on-box);
+  box-shadow: 0 0 0 2px var(--box-shadow-ring, color-mix(in srgb, var(--on-box) 12%, transparent)), 0 24px 64px var(--shadow-ink);
+  overflow: hidden;
+}
+
+/* The title bar becomes the phone's top bezel: the window title text is hidden and the status row
+   (island, 9:41, glyphs) carries the top. Drag still works anywhere on the titlebar; pop-out (arrow) and
+   close (x) stay top-right as small circular controls. */
+.phone-dialog .fd-titlebar {
+  padding: 14px 14px 4px;
+  background: transparent;
+  border-bottom: 0;
+  border-radius: 0;
+}
+.phone-dialog .fd-title { visibility: hidden; }
+.phone-dialog .fd-btn {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--on-box) 16%, transparent);
+  color: var(--on-box);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+}
+.phone-dialog .fd-btn:hover { background: color-mix(in srgb, var(--on-box) 30%, transparent); }
+.phone-dialog .fd-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.phone-dialog .fd-body { padding: 0; overflow: hidden; background: transparent; }
+/* Resize handles stay grabbable but must not read as light strips on the bezel. */
+.phone-dialog .fd-handle { filter: none; opacity: 0.35; }
+
+.phone-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0 14px 10px;
+  border-radius: 36px;
+  background: linear-gradient(165deg, var(--phone-wall-1) 0%, var(--phone-wall-2) 55%, var(--phone-wall-3) 100%);
+  color: var(--on-box);
+}
+
+/* --- status bar: island centered, time left, glyphs right --- */
+.phone-screen__status {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 10px;
+  color: var(--on-box);
+}
+.phone-screen__time { font-size: var(--font-size-sm); font-weight: 700; letter-spacing: 0.02em; }
+.phone-screen__island {
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  transform: translateX(-50%);
+  width: 86px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--box-dark);
+}
+/* Signal bars + wifi arc + battery, drawn without images or hex colors. */
+.phone-screen__glyphs {
+  display: inline-block;
+  width: 62px;
+  height: 12px;
+  background:
+    linear-gradient(to right, var(--on-box) 0 3px, transparent 3px 5px, var(--on-box) 5px 7px, transparent 7px 9px, var(--on-box) 9px 11px, transparent 11px 13px, var(--on-box) 13px 15px, transparent 15px 17px) left center / 17px 9px no-repeat,
+    radial-gradient(circle at 100% 100%, transparent 6px, var(--on-box) 6px 7px, transparent 7px) left center / 15px 8px no-repeat,
+    linear-gradient(to right, transparent 0 2px, var(--on-box) 2px calc(100% - 2px), transparent calc(100% - 2px)) right center / 22px 11px no-repeat,
+    linear-gradient(to right, var(--on-box) 0 60%, transparent 60%) right center / 18px 7px no-repeat;
+  background-position: left center, calc(17px + 4px) center, right center, right center;
+  background-repeat: no-repeat;
+  opacity: 0.92;
+}
+.phone-screen__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding: 4px 2px;
+}
+
+/* --- screen content: readable on the dark wallpaper --- */
+.phone-screen__body,
+.phone-screen__body p,
+.phone-screen__body h3,
+.phone-screen__body strong { color: var(--on-box); }
+.phone-screen .phone__app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-box);
+}
+.phone-screen .phone__badge {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+}
+.phone-screen .phone__now { margin-left: auto; text-transform: none; font-weight: 500; opacity: 0.85; }
+.phone-screen .phone__headline { margin: 0; font-size: var(--font-size-lg); font-weight: 700; color: var(--on-box); }
+.phone-screen .phone__detail { margin: 0; font-size: var(--font-size-sm); color: var(--on-box); }
+.phone-screen .phone__message {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--on-box) 14%, transparent);
+  font-weight: 650;
+  font-size: var(--font-size-base);
+  color: var(--on-box);
+  overflow-wrap: anywhere;
+}
+.phone-screen .phone__muted { margin: 0; font-size: var(--font-size-sm); color: var(--on-box); opacity: 0.8; }
+
+/* --- actions: pill buttons, WCAG-readable on the gradient --- */
+.phone-screen .phone__actions { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 8px; }
+.phone-screen .phone__btn {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid color-mix(in srgb, var(--on-box) 35%, transparent);
+  border-radius: 23px;
+  background: color-mix(in srgb, var(--on-box) 18%, transparent);
+  color: var(--on-box);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  cursor: pointer;
+}
+.phone-screen .phone__btn:hover { background: color-mix(in srgb, var(--on-box) 28%, transparent); }
+.phone-screen .phone__btn:focus-visible { outline: 2px solid var(--on-box); outline-offset: 2px; }
+.phone-screen .phone__btn--primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.phone-screen .phone__btn--primary:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-box)); }
+.phone-screen .phone__btn:disabled { opacity: 0.45; cursor: default; }
+
+/* --- home indicator --- */
+.phone-screen__home { height: 5px; margin: 10px auto 0; width: 110px; border-radius: 999px; background: var(--on-box); opacity: 0.85; }
+
+/* Narrow screens: FloatingDialog becomes a bottom sheet; keep the device look full-width. */
+@media (max-width: 600px) {
+  .phone-dialog.fd-panel { border-radius: 36px 36px 0 0; }
+}

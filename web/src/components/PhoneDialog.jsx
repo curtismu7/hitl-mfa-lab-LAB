@@ -1,41 +1,14 @@
-// PhoneDialog: the standard mock-phone window for standalone apps (2026-11-19). The phone is not a nested div in
-// another modal: it is its own small FloatingDialog — draggable by the title bar, 8-direction resizable, pop-out to a
-// real browser window (the phone stays live), keyboard move, saved position per singletonKey. iPhone chrome (notch,
-// status bar, dark frame) comes from the app's `.phone` CSS; children fill the screen. AI-DEMO2 uses the same shapes
-// (CibaApprovalPage phone, DraggableModal); this is the standalone standard that folds both together.
-import FloatingDialog from "../floating-dialog/FloatingDialog";
+// PhoneDialog: the hitl lab's name for the shared Phone standard (web/src/phone, vendored byte for byte from
+// AI-DEMO-Standalone shared/phone). Kept as a thin alias so PolicyGate call sites keep their isOpen/title/testId
+// props. The shared component renders the iPhone chrome (bezel, dynamic island, 9:41 status bar, home indicator)
+// inside the FloatingDialog: draggable, 8-way resizable, pop-out-able. All screen text is --on-box on the dark
+// wallpaper. See shared/phone/README.md.
+import Phone from "../phone/Phone.jsx";
 
-export default function PhoneDialog({
-  isOpen,
-  onClose,
-  title = "Phone",
-  testId,
-  children,
-  footer = null,
-  singletonKey,
-}) {
+export default function PhoneDialog({ isOpen, onClose, title = "Phone", testId, children, footer = null, singletonKey }) {
   return (
-    <FloatingDialog
-      isOpen={isOpen}
-      onClose={onClose}
-      title={title}
-      testId={testId}
-      className="phone-dialog"
-      defaultWidth={320}
-      defaultHeight={560}
-      defaultX={null}
-      defaultY={null}
-      placement="bottom-right"
-      minWidth={260}
-      minHeight={420}
-      noBackdrop
-      singletonKey={singletonKey}
-      closeLabel="Close"
-      footer={footer}
-    >
-      <div className="phone phone--window" data-testid={testId ? `${testId}-phone` : undefined}>
-        {children}
-      </div>
-    </FloatingDialog>
+    <Phone open={isOpen} onClose={onClose} label={title} testId={testId ? `${testId}-phone` : undefined} singletonKey={singletonKey}>
+      {children}
+    </Phone>
   );
 }
