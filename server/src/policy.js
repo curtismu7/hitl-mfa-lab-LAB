@@ -194,6 +194,15 @@ export function createCibaStore({ now = Date.now, expiresIn = 300, interval = 2,
       r.status = 'denied';
       return { status: 'denied' };
     },
+    // Demo knob: retire a pending request now, the way an unanswered request expires at the TTL.
+    // Pending only: an approved, denied, expired or unknown auth_req_id returns null (an approved
+    // request keeps its receipt; deny must not be smuggled in as an expiry).
+    expire(authReqId) {
+      const r = requests.get(String(authReqId).slice(0, LIMITS.authReqId));
+      if (!r || r.status !== 'pending') return null;
+      r.status = 'expired';
+      return { status: 'expired' };
+    },
     get(authReqId) { return requests.get(String(authReqId).slice(0, LIMITS.authReqId)) || null; },
     all() { return [...requests.entries()].map(([authReqId, r]) => ({ authReqId, ...r })); },
     reset() { requests.clear(); seq = 0; },

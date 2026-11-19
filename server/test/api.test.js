@@ -201,6 +201,17 @@ test('UC22: CIBA for a $150 agent action — bc-authorize, out-of-band approve, 
     await post('/api/ciba/respond', { authReqId: ba2.auth_req_id, decision: 'denied' }, 'w3');
     p = await (await fetch(`${url}/api/ciba/poll/${ba2.auth_req_id}`, { headers: { 'x-workspace': 'w3' } })).json();
     assert.equal(p.status, 'denied');
+    // demo knob: expire a pending request now — the same end state the TTL produces. The next
+    // poll reports expired and the call stays paused; an approved or unknown id is refused.
+    const ba3 = await (await post('/api/ciba/bc-authorize', { amount: 150 }, 'w3')).json();
+    const ex = await (await post('/api/ciba/expire', { authReqId: ba3.auth_req_id }, 'w3')).json();
+    assert.equal(ex.status, 'expired');
+    p = await (await fetch(`${url}/api/ciba/poll/${ba3.auth_req_id}`, { headers: { 'x-workspace': 'w3' } })).json();
+    assert.equal(p.status, 'expired');
+    const exAgain = await post('/api/ciba/expire', { authReqId: ba3.auth_req_id }, 'w3');
+    assert.equal(exAgain.status, 409);
+    const exUnknown = await post('/api/ciba/expire', { authReqId: 'ciba-nope' }, 'w3');
+    assert.equal(exUnknown.status, 404);
   });
 });
 
