@@ -52,6 +52,22 @@
 .jform__chip[data-on="true"] { border-color: var(--status-ok); color: var(--status-ok); font-weight: 700; }
 .jform__chip[data-on="false"] { border-color: var(--status-warn); color: var(--status-warn); font-weight: 700; }
 .jform__chips[data-hot="true"] .jform__chip { border-color: var(--accent); background: var(--j-hot-bg); color: var(--text); font-weight: 700; }
+/* Hybrid C+A sections (owner, 2026-11-19): a nested object or array is one collapsed line until opened;
+   the body is ONE flat dot-path list, never nested boxes. Same tokens, dark and light. */
+.jsec { min-width: 0; }
+.jsec__head { display: flex; align-items: baseline; gap: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); cursor: pointer; list-style: none; }
+.jsec__head::-webkit-details-marker { display: none; }
+.jsec__head:hover { border-color: var(--accent); }
+.jsec__caret { color: var(--muted); flex: none; }
+.jsec__name { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--j-key); overflow-wrap: anywhere; }
+.jsec__meta { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.jsec__preview { display: block; padding: 2px 6px 0; font-family: var(--font-mono); font-size: 12px; color: var(--text-body); overflow-wrap: anywhere; }
+.jsec__preview .jform__v { display: inline; border: none; background: none; padding: 0; }
+.jsec[open] .jsec__preview { display: none; }
+.jsec__body { min-width: 0; }
+.jsec__body .jform--flat { padding-left: 10px; border-left: 2px solid var(--border); margin-top: 4px; }
+.jsec__body .jform--flat .jform__row { grid-template-columns: fit-content(120px) minmax(0, 1fr); }
+.jsec__body .jform__k { color: var(--muted); font-weight: 600; }
 /* IMPORTANT keys (HOT, or a lab's own `hot` list) and error / decision keys stand out in the form: a tinted row with an accent edge. */
 .jform__row[data-hot="true"] { background: var(--j-hot-bg); border-left: 3px solid var(--accent); border-radius: 4px; padding: 2px 4px 2px 6px; }
 .jform__row[data-hot="true"] > .jform__k { color: var(--text); }
