@@ -588,13 +588,21 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
               {realCfg?.ok ? <>Door <code>{realCfg.host}</code>, tool <code>{realCfg.tool}</code>. </> : null}
               The call below really goes to your gateway with your agent key (kept on the server, never shown here). Approving is yours: in your Privilege console open <strong>HITL Requests</strong>, approve, and PingID asks you on your phone. This lab cannot do that step and only infers it.
             </p>
+            <h4>PingID through Privilege (the real path)</h4>
+            <p className="muted">Privilege itself asks PingID; this lab only sends the call and waits. Check these in your Privilege console first:</p>
+            <ol className="muted" data-testid="real-checklist">
+              <li>Settings, Tenant: <strong>MFA is Enabled</strong>.</li>
+              <li>An AI policy on this door{realCfg?.tool ? <> for <code>{realCfg.tool}</code></> : null} is <strong>Active</strong> with outcome <strong>Require human approval</strong> (MCP server and target must match the tool).</li>
+              <li>The approver has the PingID app paired and signs in to the console as the approving user.</li>
+            </ol>
+            <p className="muted">Then press <strong>Send the real call</strong>. Expect a hold (<code>pending_approval</code> with an instruction id). Privilege then sends the PingID prompt to the approver's phone: in the recording it arrived right after the hold; if yours does not, open <strong>HITL Requests</strong> and click Approve. Tap Yes on the phone, then retry with the approval id.</p>
             {/* ui-pattern: allow P9 only shown while the scenario is Real, when the mock AgentCall (the other primary) is not rendered */}
             <button type="button" className="primary" data-testid="real-call" disabled={realBusy} onClick={() => realCall(null)}>Send the real call</button>
             {realPingCfg?.available && !realPhoneOpen && (
               <button type="button" className="link" data-testid="real-pingid-reopen" onClick={() => setRealPhoneOpen(true)}>Show the PingID phone</button>
             )}
             {realPingCfg?.available && (
-              <PhoneDialog isOpen={realPhoneOpen} onClose={() => setRealPhoneOpen(false)} title="PingID — real push" testId="real-pingid" singletonKey="real-pingid-phone">
+              <PhoneDialog isOpen={realPhoneOpen} onClose={() => setRealPhoneOpen(false)} title="PingID: direct push from this lab (not Privilege)" testId="real-pingid" singletonKey="real-pingid-phone">
                 <p className="phone__app">PingID</p>
                 <p className="phone__msg">
                   {realPush.status === "idle" && "Send a real push to your enrolled PingID app, then approve there. Approving here proves the approver; the console approval of the hold is still yours."}
