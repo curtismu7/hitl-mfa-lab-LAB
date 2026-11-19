@@ -135,7 +135,14 @@ function mockFetch() {
 }
 beforeEach(() => { override = {}; mockFetch(); window.location.hash = ""; });
 
-const ready = async () => { render(<App />); await screen.findByText("HITL: $300 needs human consent"); await screen.findByTestId("verdict"); };
+// No auto-run (owner rule 2026-11-19: the page must not fire a prompt on load): the visitor's
+// first click on a scenario chip makes the agent call. `ready` performs that click.
+const ready = async () => {
+  render(<App />);
+  const chip = await screen.findByText("HITL: $300 needs human consent");
+  await userEvent.click(chip);
+  await screen.findByTestId("verdict");
+};
 
 describe("shell", () => {
   it("shows the Shelf button in the header, linking to the shelf URL from /api/shelf", async () => {
@@ -429,8 +436,9 @@ describe("Real mode (owner-run)", () => {
   it("the other scenarios stay simulated in Real mode", async () => {
     await realReady();
     await userEvent.click(screen.getByText("HITL: $300 needs human consent"));
+    // The click runs the scenario (mock flow) and the consent beat opens; the Real panel is gone.
+    await waitFor(() => expect(screen.queryByTestId("real-panel")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("consent-modal")).toBeInTheDocument());
-    expect(screen.queryByTestId("real-panel")).toBeNull();
   }, 15000);
 });
 

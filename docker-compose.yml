@@ -21,6 +21,13 @@ services:
       HMLAB_REAL_AGENT_KEY: ${HMLAB_REAL_AGENT_KEY:-}
       HMLAB_REAL_TOOL: ${HMLAB_REAL_TOOL:-}
       HMLAB_REAL_ARGS: ${HMLAB_REAL_ARGS:-}
+      # Real PingID push (owner-run, optional): a real push to the approver's enrolled PingID app.
+      HMLAB_PINGONE_ENV_ID: ${HMLAB_PINGONE_ENV_ID:-}
+      HMLAB_PINGONE_REGION: ${HMLAB_PINGONE_REGION:-}
+      HMLAB_PINGONE_WORKER_CLIENT_ID: ${HMLAB_PINGONE_WORKER_CLIENT_ID:-}
+      HMLAB_PINGONE_WORKER_CLIENT_SECRET: ${HMLAB_PINGONE_WORKER_CLIENT_SECRET:-}
+      HMLAB_PINGONE_USERNAME: ${HMLAB_PINGONE_USERNAME:-}
+      HMLAB_PINGONE_MFA_POLICY_ID: ${HMLAB_PINGONE_MFA_POLICY_ID:-}
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

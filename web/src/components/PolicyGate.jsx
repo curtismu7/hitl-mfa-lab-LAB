@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Json from "./Json";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
+import PhoneDialog from "./PhoneDialog";
 import LiveFlow from "./LiveFlow";
 import GatewayTrace from "../gateway-trace/GatewayTrace.jsx";
 import TokenReel from "./TokenReel";
 import { nextTrail, realRun, reelCards } from "../liveFlow";
-import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
+import { callRealPrivilege, getRealPingid, sendRealPingidPush, pollRealPingidPush, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
 import { visible } from "../safeText";
 import PingIdSetup from "./PingIdSetup";
 
@@ -16,6 +17,7 @@ export function Hops({ hops, traceId }) {
   return (
     <section aria-label="Mock hops with traceparent" data-testid="hops">
       <h3>Hops (W3C traceparent) <span className="muted">trace {traceId}</span></h3>
+      <div className="hops-grid">
       {hops.map((h) => (
         <details key={h.n} open={h.n === 1}>
           <summary>{h.n}. {h.label}</summary>
@@ -23,6 +25,7 @@ export function Hops({ hops, traceId }) {
           <p className="muted">Response</p><Json value={h.response} label={`Response of hop ${h.n}`} />
         </details>
       ))}
+      </div>
     </section>
   );
 }
@@ -83,16 +86,18 @@ function BandsEditor({ current, onSaved }) {
 /** The agent call: pick an amount, run the gated transfer. A 428 opens the matching human beat.
  * onBlocked carries the FULL payload so the retry after the human beat repeats exactly the call
  * the human was shown — not some other amount the scenario happened to use. */
-function AgentCall({ tools, onResult, onBlocked }) {
+function AgentCall({ tools, onResult, onBlocked, onRunning, running = false }) {
   const [tool, setTool] = useState(tools[0].name);
   const [amount, setAmount] = useState("300");
   const [declared, setDeclared] = useState("");
   const [fail, setFail] = useState(null);
   const run = async () => {
     setFail(null);
+    onRunning?.(true);
     const payload = { tool, amount: Number(amount) };
     if (declared) payload.step_up_method = declared;
     const res = await runTool(payload).catch(() => ({ ok: false, status: 0, body: {} }));
+    onRunning?.(false);
     if (res.ok || res.body.decision) {
       onResult(res.body);
       const beatPayload = { tool, amount: Number(amount) };
@@ -123,7 +128,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
         <option value="privilege">privilege (Privilege gateway hold, PingID-confirmed approver)</option>
       </select>
       {/* ui-pattern: allow P9 never shown with the Real panel: while the scenario is Real this whole component is replaced by a note */}
-      <button type="button" className="primary" onClick={run} data-testid="call-run">Call as the agent</button>
+      <button type="button" className={`primary${running ? " running" : ""}`} disabled={running} onClick={run} data-testid="call-run">{running ? "Running…" : "Call as the agent"}</button>
       {fail && <p className="field-error" role="alert">{fail}</p>}
     </section>
   );
@@ -145,11 +150,11 @@ function ConsentModal({ open, amount, challengeId, onApproved, onDenied, onClose
   };
   return (
     <FloatingDialog isOpen placement="right" onClose={onClose} title="Human approval required" testId="consent-modal"
-      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
+      defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
         <p>The agent wants to transfer <strong data-testid="consent-amount">${amount}</strong>. The policy requires explicit human consent before it runs — the agent is paused.</p>
         <div className="modal__actions">
-          <button type="button" data-testid="consent-approve" disabled={deciding} onClick={() => decide("approved")}>Approve</button>
+          <button type="button" data-testid="consent-approve" className="primary" disabled={deciding} onClick={() => decide("approved")}>Approve</button>
           <button type="button" data-testid="consent-deny" disabled={deciding} onClick={() => decide("denied")}>Deny</button>
           <button type="button" className="link" onClick={onClose}>Dismiss</button>
         </div>
@@ -184,7 +189,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
   };
   return (
     <FloatingDialog isOpen placement="right" onClose={onClose} title="MFA step-up required" testId="mfa-modal"
-      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
+      defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
         <p>The policy requires device MFA for <strong>${amount}</strong>. The agent cannot satisfy it — a human must.</p>
         {challengeId ? (
@@ -253,7 +258,7 @@ function PushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
   };
   return (
     <FloatingDialog isOpen placement="right" onClose={onClose} title="PingID push approval required" testId="push-modal"
-      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
+      defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
         <p>The policy requires a PingID push for <strong data-testid="push-amount">${amount}</strong>. A <strong>mock</strong> push was sent to the approver's phone; the agent is polling for the answer.</p>
         {binding && <p className="muted">Binding message on the push: <code>{binding}</code></p>}
@@ -322,11 +327,12 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose, onIssued }) {
   };
   return (
     <FloatingDialog isOpen placement="right" onClose={onClose} title="CIBA: approval requested out-of-band" testId="ciba-modal"
-      defaultWidth={520} defaultHeight={null} minHeight={200} footer={null}>
+      defaultWidth={600} defaultHeight={null} minHeight={260} footer={null}>
       <div className="modal__card">
         <p>The agent has no browser to prompt in. The policy requested decoupled approval for <strong>${amount}</strong> — triggered by the agent context and the sensitivity of the action, not by the amount.</p>
         {authReqId ? (
-          <div className="phone" data-testid="ciba-phone" aria-label="The user's phone (mock)">
+          <PhoneDialog isOpen onClose={onClose} title="Your phone — CIBA approval" testId="ciba" singletonKey="ciba-phone">
+            <p className="phone__app">Banking</p>
             <p className="phone__msg">{visible(binding)}</p>
             <p className="muted">auth_req_id: <code>{visible(authReqId)}</code></p>
             <div className="modal__actions">
@@ -334,7 +340,7 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose, onIssued }) {
               <button type="button" data-testid="ciba-deny" disabled={decided} onClick={() => decide("denied")}>Deny</button>
               <button type="button" data-testid="ciba-expire" disabled={decided} onClick={() => decide("expired")}>Let it expire</button>
             </div>
-          </div>
+          </PhoneDialog>
         ) : <p className="muted">{msg || "Requesting approval (bc-authorize)..."}</p>}
         {msg && authReqId && <p className="field-error" role="alert">{msg}</p>}
         <p className="muted">The agent polls for the decision. Approving mints a single-use, amount-bound receipt and the call is retried once.</p>
@@ -368,7 +374,7 @@ function PrivilegeModal({ open, amount, requestId, onApproved, onRejected, onClo
   };
   return (
     <FloatingDialog isOpen placement="right" onClose={onClose} title="Privilege HITL Requests: approval needed" testId="privilege-modal"
-      defaultWidth={540} defaultHeight={null} minHeight={200} footer={null}>
+      defaultWidth={620} defaultHeight={null} minHeight={260} footer={null}>
       <div className="modal__card">
         <p>The Privilege gateway held the agent's <strong>${amount}</strong> transfer (403 <code>pending_approval</code>). You are the approver, in the console's <strong>HITL Requests</strong> (mock).</p>
         <table className="tbl" data-testid="privilege-queue">
@@ -378,14 +384,15 @@ function PrivilegeModal({ open, amount, requestId, onApproved, onRejected, onClo
         </table>
         {stage === "list" && (
           <div className="modal__actions">
-            <button type="button" data-testid="privilege-approve" disabled={busy} onClick={() => { setMsg(null); setStage("pingid"); }}>Approve</button>
+            <button type="button" data-testid="privilege-approve" className="primary" disabled={busy} onClick={() => { setMsg(null); setStage("pingid"); }}>Approve</button>
             <button type="button" data-testid="privilege-reject" disabled={busy} onClick={() => decide({ decision: "reject" }, () => onRejected())}>Reject</button>
             <button type="button" className="link" onClick={onClose}>Dismiss</button>
           </div>
         )}
         {stage === "pingid" && (
-          <div className="phone" data-testid="pingid-phone" aria-label="PingID on the approver's phone (mock)">
-            <p className="phone__msg"><strong>PingID</strong> — Are you trying to sign on? (approving this request)</p>
+          <PhoneDialog isOpen onClose={() => { setStage("list"); setMsg(null); }} title="PingID — the approver's phone" testId="pingid" singletonKey="pingid-phone">
+            <p className="phone__app">PingID</p>
+            <p className="phone__msg">Are you trying to sign on? (approving this request)</p>
             <div className="modal__actions">
               <button type="button" data-testid="pingid-approve" disabled={busy} onClick={() => decide({ decision: "approve", pingid: { method: "push", result: "approved" } }, (r) => onApproved({ id: requestId, method: r.method }))}>Approve</button>
               <button type="button" data-testid="pingid-deny" disabled={busy} onClick={() => decide({ decision: "approve", pingid: { method: "push", result: "denied" } }, () => {})}>No, it's not me</button>
@@ -396,7 +403,7 @@ function PrivilegeModal({ open, amount, requestId, onApproved, onRejected, onClo
               <button type="button" data-testid="pingid-verify" disabled={busy} onClick={() => decide({ decision: "approve", pingid: { method: "passcode", code } }, (r) => onApproved({ id: requestId, method: r.method }))}>Verify passcode</button>
               <button type="button" onClick={() => { setStage("list"); setMsg(null); }}>Back</button>
             </div>
-          </div>
+          </PhoneDialog>
         )}
         {msg && <p className="field-error" role="alert" data-testid="privilege-msg">{msg}</p>}
         <p className="muted">Approving needs PingID; rejecting does not. The approval covers one transaction, and the agent retries with it inside 90 seconds. A decided request cannot be changed.</p>
@@ -420,6 +427,8 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   const [realBusy, setRealBusy] = useState(false);
   const [realMsg, setRealMsg] = useState(null);
   const [realCfg, setRealCfg] = useState(null);
+  const [realPingCfg, setRealPingCfg] = useState(null);
+  const [realPush, setRealPush] = useState({ daId: null, status: "idle", stop: true });
   const [approvalInput, setApprovalInput] = useState("");
   // Real mode (owner-run) makes ONE scenario real: the PRIVILEGE hold. Every other scenario stays simulated.
   const isReal = useCallback((sid) => mode === "real" && sid === "privilege-pingid", [mode]);
@@ -444,11 +453,13 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
 
   // Run a shipped scenario: set its bands, then make the call — exactly what the gate measures.
   const runToken = useRef(0);
+  const [running, setRunning] = useState(false); // a scenario/agent call in flight: the buttons show it
   const runScenario = useCallback(async (sid, { applyBands = true } = {}) => {
     const token = ++runToken.current;
     const drop = () => token !== runToken.current;
     setFail(null);
-    if (isReal(sid)) { setRun(null); setTrail([]); setIssued({}); setRealEx([]); setRealMsg(null); return; } // nothing is sent until the owner presses the button
+    setRunning(true);
+    if (isReal(sid)) { setRunning(false); setRun(null); setTrail([]); setIssued({}); setRealEx([]); setRealMsg(null); return; } // nothing is sent until the owner presses the button
     const sc = story.scenarios.find((s) => s.id === sid) || story.scenarios[0];
     if (applyBands) {
       const saved = await postPolicy({ bands: sc.bands }).catch(() => null);
@@ -459,6 +470,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     if (sc.declaredStepUp) payload.step_up_method = sc.declaredStepUp;
     const res = await runTool(payload).catch(() => ({ ok: false, status: 0, body: {} }));
     if (drop()) return;
+    setRunning(false);
     if (res.ok || res.body.decision) {
       showFresh(res.body);
       if (res.body.error === "mcp_step_up_required" && (res.body.step_up_method === "p1mfa" || res.body.step_up_method === "pingid-push")) setBeat({ kind: "mfa", payload });
@@ -469,7 +481,14 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   }, [story, showFresh, isReal]);
 
   useEffect(() => { setRun(null); setBeat(null); setTrail([]); setIssued({}); }, [resetSignal]);
-  useEffect(() => { runScenario(id); }, [id, resetSignal, runScenario]); // eslint-disable-line react-hooks/exhaustive-deps
+  // No auto-run: the visitor makes the agent call themselves. Switching chips only selects; the
+  // run starts on their click. A chip switch clears the previous run instead of starting a new one.
+  const lastId = useRef(id);
+  useEffect(() => {
+    if (lastId.current === id) return;
+    lastId.current = id;
+    setRun(null); setBeat(null); setTrail([]); setIssued({});
+  }, [id]);
 
   const onResult = useCallback((r) => showFresh(r), [showFresh]);
   const onBlocked = useCallback((kind, payload, challengeId) => setBeat({ kind, payload, challengeId }), []);
@@ -491,6 +510,23 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
 
   const realActive = isReal(id);
   useEffect(() => { if (realActive) getJson("/api/privilege/real").then(setRealCfg, () => setRealCfg(null)); }, [realActive]);
+  useEffect(() => { if (realActive) getRealPingid().then(setRealPingCfg, () => setRealPingCfg({ available: false })); }, [realActive]);
+  useEffect(() => {
+    if (!realPush.daId || realPush.stop) return undefined;
+    const t = setInterval(async () => {
+      const r = await pollRealPingidPush(realPush.daId).catch(() => null);
+      if (!r) return;
+      if (r.status === "approved") setRealPush((p) => ({ ...p, status: "approved", stop: true }));
+      else if (r.status === "denied" || r.status === "failed") setRealPush((p) => ({ ...p, status: r.status, stop: true }));
+    }, 3000);
+    return () => clearInterval(t);
+  }, [realPush.daId, realPush.stop]);
+  const realSendPush = async () => {
+    setRealPush({ daId: null, status: "sending", stop: false });
+    const r = await sendRealPingidPush(`Approve $150 transfer hold`).catch(() => ({ ok: false }));
+    if (!r.ok) return setRealPush({ daId: null, status: "failed", stop: true });
+    setRealPush({ daId: r.body.daId, status: "waiting", stop: false });
+  };
   useEffect(() => { if (realActive && run?.real && run?.error === "pending_approval") setApprovalInput(run.approval?.instruction_id || ""); }, [realActive, run]);
   // One real call. approvalId makes it the retry the owner sends after approving in their own console.
   const realCall = async (approvalId = null) => {
@@ -519,7 +555,12 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       <section className="panel gate-step" aria-labelledby="sc-h" data-testid="step-pick">
         <h2 id="sc-h"><span className="gate-step__n">1</span> Pick a scenario</h2>
         <div className="seg" role="group" aria-label="Scenario">
-          {story.scenarios.map((s) => <button key={s.id} type="button" aria-pressed={s.id === id} onClick={() => { setBeat(null); setId(s.id); if (onSelect) onSelect(s.id); }}>{s.title}</button>)}
+          {story.scenarios.map((s) => (
+            <button key={s.id} type="button" aria-pressed={s.id === id}
+              className={running && s.id === id ? "running" : undefined}
+              disabled={running}
+              onClick={() => { setBeat(null); setId(s.id); if (onSelect) onSelect(s.id); runScenario(s.id); }}>{s.title}</button>
+          ))}
         </div>
         <p className="lesson" data-testid="lesson">{scenario.lesson}</p>
       </section>
@@ -546,6 +587,26 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
             </p>
             {/* ui-pattern: allow P9 only shown while the scenario is Real, when the mock AgentCall (the other primary) is not rendered */}
             <button type="button" className="primary" data-testid="real-call" disabled={realBusy} onClick={() => realCall(null)}>Send the real call</button>
+            {realPingCfg?.available && (
+              <PhoneDialog isOpen onClose={null} title="PingID — real push" testId="real-pingid" singletonKey="real-pingid-phone">
+                <p className="phone__app">PingID</p>
+                <p className="phone__msg">
+                  {realPush.status === "idle" && "Send a real push to your enrolled PingID app, then approve there. Approving here proves the approver; the console approval of the hold is still yours."}
+                  {realPush.status === "sending" && "Sending the push…"}
+                  {realPush.status === "waiting" && "Push sent. Check your phone: approve to confirm, or refuse."}
+                  {realPush.status === "approved" && "Approved on the phone. Retry the call with the approval id below."}
+                  {realPush.status === "denied" && "Refused on the phone. Nothing is approved."}
+                  {realPush.status === "failed" && "The push failed or timed out. Send it again."}
+                </p>
+                <div className="modal__actions">
+                  {realPush.status !== "waiting" && (
+                    <button type="button" data-testid="real-push-send" disabled={realPush.status === "sending"} onClick={realSendPush}>
+                      {realPush.status === "idle" ? "Send PingID push" : "Send again"}
+                    </button>
+                  )}
+                </div>
+              </PhoneDialog>
+            )}
             {run?.error === "pending_approval" && (
               <>
                 <label htmlFor="real-approval">Approval id to retry with (UNVERIFIED that it equals the instruction id: edit it if your console shows another)</label>
@@ -568,7 +629,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
           {bands && <BandsEditor current={bands} onSaved={(b) => { setBandsState(b); if (!beat) runScenario(id, { applyBands: false }); }} />}
           {realActive
             ? <p className="muted panel" data-testid="try-disabled">Not available while this scenario is Real: a call from here would run the simulated gate, not your gateway. Pick another scenario, or switch the header toggle to Mock.</p>
-            : <AgentCall tools={story.tools} onResult={onResult} onBlocked={onBlocked} />}
+            : <AgentCall tools={story.tools} onResult={onResult} onBlocked={onBlocked} onRunning={setRunning} running={running} />}
         </div>
       </details>
 
