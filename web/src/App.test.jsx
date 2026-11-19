@@ -30,6 +30,13 @@ const DIAGRAM = {
 const hop = (n) => ({ n, from: "agent", to: "policy", label: `hop ${n}`, traceparent: `00-${"a".repeat(32)}-${String(n).repeat(16)}-01`, request: `traceparent: 00-${"a".repeat(32)}-${String(n).repeat(16)}-01`, response: "HTTP/1.1 200 OK" });
 
 const DEFAULT_BANDS = { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 };
+const PINGID_STEPS = [
+  { id: "policy-assigned", title: "Assign the MFA sign-on policy", why: "Out of the box it is assigned to nothing.", where: "PingOne admin console." },
+  { id: "signin-enrol", title: "Sign in — enrolment happens at sign-in", why: "The login shows the QR and pairing key.", where: "Self Service URL." },
+  { id: "scan-qr", title: "Scan the QR with PingID", why: "The device pairs to the user.", where: "PingID mobile app." },
+  { id: "device-active", title: "Verify the device shows ACTIVE", why: "One device record per user.", where: "Owner-run check or console." },
+  { id: "stepup-live", title: "Next sign-in steps up", why: "Password, push, approve, code.", where: "Sign in again." },
+];
 let calls;
 let override = {};
 const mfaReceipt = { id: "stepUp-receipt-0001", ttlMs: 300000, kind: "stepUp" };
@@ -78,6 +85,11 @@ function mockFetch() {
     if (url.startsWith("/api/ciba/poll/")) return json({ status: override.cibaApproved ? "approved" : "pending", ...(override.cibaApproved ? { receiptId: "hitl-receipt-0002" } : {}), workspace: "t" });
     if (url === "/api/ciba/respond") { const d = JSON.parse(opts.body).decision; if (d === "approved") { override.cibaApproved = true; override.approved = true; override.approvedFor = 150; } return json({ status: d, receiptId: "hitl-receipt-0002", workspace: "t" }); }
     if (url === "/api/ciba/pending") return json({ pending: [], workspace: "t" });
+    if (url === "/api/pingid/status") {
+      return json({ steps: PINGID_STEPS, done: override.pingidDone || [], complete: (override.pingidDone || []).length === PINGID_STEPS.length, liveConfigured: !!override.pingidLive, workspace: "t", ...(override.pingidLive ? { liveCheck: "node scripts/pingid-check.mjs" } : { liveHint: "Set the env vars." }) });
+    }
+    if (url === "/api/pingid/step") { const id = JSON.parse(opts.body).stepId; override.pingidDone = [...(override.pingidDone || []), id]; return json({ done: override.pingidDone, complete: override.pingidDone.length === PINGID_STEPS.length, workspace: "t" }); }
+    if (url === "/api/pingid/reset") { override.pingidDone = []; return json({ done: [], complete: false, workspace: "t" }); }
     if (url === "/api/runs") return json({ workspace: "t", runs: [] });
     if (url === "/api/reset") { override = {}; return json({ reset: "ok" }); }
     return json({}, 404);
@@ -241,6 +253,40 @@ describe("diagram edge labels", () => {
     const steps = [{ from: "a", to: "b" }, { from: "b", to: "a" }, { from: "a", to: "c" }];
     expect(labelOffsets(steps)).toEqual([-16, 16, 0]);
     expect(labelOffsets([])).toEqual([]);
+  });
+});
+
+describe("PingID setup wizard", () => {
+  it("opens from the button, shows the measured steps and marks one done", async () => {
+    await ready();
+    await userEvent.click(screen.getByTestId("pingid-setup-open"));
+    const d = await screen.findByTestId("pingid-wizard");
+    expect(d).toHaveAccessibleName("Configure PingID for a user");
+    expect(within(d).getByText("1. Assign the MFA sign-on policy")).toBeInTheDocument();
+    await userEvent.click(within(d).getByTestId("pingid-mark-policy-assigned"));
+    await waitFor(() => expect(within(d).getByText("done")).toBeInTheDocument());
+    await waitFor(() => expect(within(d).getByTestId("pingid-mark-signin-enrol")).toBeInTheDocument());
+    await userEvent.click(within(d).getByTestId("pingid-mark-signin-enrol"));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/pingid/step" && JSON.parse(c.opts.body).stepId === "signin-enrol")).toBe(true));
+  });
+  it("without live config it shows the env hint; with live config it names the owner-run checker", async () => {
+    await ready();
+    await userEvent.click(screen.getByTestId("pingid-setup-open"));
+    expect(await screen.findByTestId("pingid-wizard")).toHaveTextContent("Set the env vars.");
+  });
+  it("with the live env vars set the wizard names the owner-run checker, never a value", async () => {
+    override.pingidLive = true;
+    await ready();
+    await userEvent.click(screen.getByTestId("pingid-setup-open"));
+    const d = await screen.findByTestId("pingid-wizard");
+    expect(d).toHaveTextContent("node scripts/pingid-check.mjs");
+  });
+  it("Escape closes the dialog", async () => {
+    await ready();
+    await userEvent.click(screen.getByTestId("pingid-setup-open"));
+    await screen.findByTestId("pingid-wizard");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("pingid-wizard")).toBeNull());
   });
 });
 

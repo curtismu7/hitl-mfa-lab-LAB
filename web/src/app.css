@@ -77,6 +77,12 @@ label.inline { display: inline-flex; margin-top: 0; font-weight: 400; }
 .field-error { color: var(--th-deny-text); background: var(--th-deny-bg); border: 1px solid var(--th-deny); border-radius: var(--radius-md); padding: 6px 10px; font-size: var(--font-size-sm); }
 details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size-sm); font-weight: 600; }
 .talk { padding-left: 22px; max-width: 80ch; } .talk h2 { font-size: var(--font-size-lg); margin: 14px 0 4px; } .talk p { margin: 0; line-height: 1.55; }
+/* PingID setup wizard: one measured step per list item; done steps dim. */
+.pingid-steps { padding-left: 18px; display: grid; gap: 10px; }
+.pingid-step h3 { margin: 0 0 2px; font-size: var(--font-size-base); }
+.pingid-step p { margin: 2px 0; line-height: 1.5; }
+.pingid-step--done h3 { color: var(--th-ok-text); }
+.pingid-step--done > p:first-of-type { color: var(--th-text-muted); }
 .presenter-say { border: 1px solid var(--th-status-info); background: var(--th-status-info-bg); border-radius: var(--radius-md); padding: 8px 14px; margin-bottom: 12px; }
 .presenter-say p { margin: 4px 0; line-height: 1.5; }
 .pat__title { margin: 0 0 4px; font-size: var(--font-size-lg); }
