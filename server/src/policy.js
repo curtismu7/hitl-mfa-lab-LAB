@@ -73,12 +73,14 @@ export function evaluateAmountPolicy({ amount, bands = DEFAULT_BANDS, declaredSt
   // A use case may DECLARE its step-up method ('ciba' | 'p1mfa' | 'privilege') — amount-independent,
   // honoured regardless of band (still below a hard DENY). This is the UC22/UC7 trigger;
   // 'privilege' is a Privilege AI-gateway "Require human approval" hold confirmed with PingID.
-  if (declaredStepUp === 'ciba' || declaredStepUp === 'p1mfa' || declaredStepUp === 'privilege') {
+  if (declaredStepUp === 'ciba' || declaredStepUp === 'p1mfa' || declaredStepUp === 'privilege' || declaredStepUp === 'pingid-push') {
     return {
       decision: 'STEP_UP',
       obligation: { type: 'STEP_UP', step_up_method: declaredStepUp },
       reason: declaredStepUp === 'ciba'
         ? 'sensitive agent-initiated action: out-of-band approval requested (amount-independent)'
+        : declaredStepUp === 'pingid-push'
+          ? 'policy requires a PingID push approval on the approver phone (amount-independent)'
         : declaredStepUp === 'privilege'
           ? 'an AI policy on the Privilege gateway holds this call for human approval, confirmed with PingID (amount-independent)'
           : 'policy requires device MFA for this action',

@@ -3,13 +3,15 @@
 
 // Where a hop lands on the diagram's boxes (server/diagrams/hitl-mfa-flow.json). The server names the human end "human" and the
 // CIBA authorization server "idp"; the diagram splits the human into three boxes and has no idp box.
-const BEAT_NODE = { hitl: "consent", mfa: "mfa", ciba: "phone", privilege: "approver" };
-const BEAT_RECEIPT = { hitl: "hitl", stepUp: "mfa", ciba: "ciba", privilege: "privilege" };
+const BEAT_NODE = { hitl: "consent", mfa: "mfa", ciba: "phone", push: "phone", privilege: "approver" };
+const BEAT_RECEIPT = { hitl: "hitl", stepUp: "mfa", ciba: "ciba", push: "push", privilege: "privilege" };
 
-/** Which human beat a run is about: "hitl" | "mfa" | "ciba" | "privilege" | null (PERMIT / DENY need none). */
+/** Which human beat a run is about: "hitl" | "mfa" | "ciba" | "push" | "privilege" | null (PERMIT / DENY need none). */
 export function beatOf(run) {
   if (!run) return null;
   if (run.error === "mcp_hitl_required" || run.error === "consent_denied") return "hitl";
+  // A PingID push is a step-up on the approver's phone: its own beat, drawn on the phone box.
+  if (run.error === "push_denied" || (run.error === "mcp_step_up_required" && run.step_up_method === "pingid-push")) return "push";
   if (run.error === "mcp_step_up_required") return "mfa";
   if (run.error === "ciba_required" || run.error === "ciba_denied") return "ciba";
   if (run.error === "pending_approval" || run.error === "approval_rejected") return "privilege";
@@ -57,6 +59,8 @@ export function diagramSteps(trail, run, nodeIds = null) {
 export function nowLine(run) {
   if (!run) return "Pick a scenario, or call the tool yourself: the flow draws itself here.";
   if (run.error === "mcp_hitl_required") return "Paused at the gate: waiting for the human to consent. Nothing has executed.";
+  if (run.error === "mcp_step_up_required" && run.step_up_method === "pingid-push") return "Paused at the gate: a PingID push went to the approver's phone; waiting for them to answer. Nothing has executed.";
+  if (run.error === "push_denied") return "The approver answered \"No, it's not me\" on the phone. The transfer stays paused and no credential was issued.";
   if (run.error === "mcp_step_up_required") return "Paused at the gate: waiting for the human to pass device MFA. Nothing has executed.";
   if (run.error === "ciba_required") return "Paused at the gate: the agent asked for approval on the user's own phone (CIBA). Nothing has executed.";
   if (run.error === "pending_approval" && run.approval?.rejected_approval) return `The retry was refused (${run.approval.rejected_approval.reason}), so the gateway opened a fresh hold: the approver has to decide again.`;
@@ -73,8 +77,8 @@ export function nowLine(run) {
 }
 
 const host = (run) => /https?:\/\/([^/\s]+)/.exec(run?.hops?.[0]?.request || "")?.[1] || null;
-const KIND_TITLE = { hitl: "Consent receipt", mfa: "MFA step-up credit", ciba: "CIBA approval receipt" };
-const CHALLENGE_TITLE = { hitl: "Consent challenge", mfa: "MFA challenge", ciba: "CIBA auth_req_id" };
+const KIND_TITLE = { hitl: "Consent receipt", mfa: "MFA step-up credit", ciba: "CIBA approval receipt", push: "PingID push credit" };
+const CHALLENGE_TITLE = { hitl: "Consent challenge", mfa: "MFA challenge", ciba: "CIBA auth_req_id", push: "PingID push challenge" };
 
 /**
  * The token reel: the credentials of this run in the order they appear. `issued` holds what the human beats minted:
@@ -94,7 +98,7 @@ export function reelCards(run, issued = {}) {
 function mockOrRealCards(run, issued) {
   if (!run) return [];
   const beat = beatOf(run);
-  const denied = run.error === "consent_denied" || run.error === "ciba_denied";
+  const denied = run.error === "consent_denied" || run.error === "ciba_denied" || run.error === "push_denied";
   const cards = [];
   cards.push({
     id: "bearer", title: "Agent bearer", status: "done", state: "presented",
@@ -124,6 +128,7 @@ function mockOrRealCards(run, issued) {
     fields: {
       id: challengeId || "(issuing...)", amount_bound: run.amount, ...(issued.challenge?.bindingMessage ? { binding_message: issued.challenge.bindingMessage } : {}),
       ...(beat === "ciba" ? { expires_in: 300, interval: 2 } : {}),
+      ...(beat === "push" ? { expires_in: 60 } : {}),
     },
   });
   const rid = run.receipt || issued.receipt?.id;
@@ -131,7 +136,7 @@ function mockOrRealCards(run, issued) {
     id: "receipt", title: KIND_TITLE[beat], status: spent ? "done" : denied ? "blocked" : issued.receipt ? "now" : "next",
     state: spent ? "consumed on retry" : denied ? "none issued" : issued.receipt ? "issued, retry pending" : "not issued yet",
     note: "Single-use and amount-bound: it discharges this gate for exactly one retried call, at or below its amount.",
-    fields: rid ? { id: rid, single_use: true, amount_bound: issued.receipt?.amountBound ?? run.amount, ...(beat === "mfa" ? { ttl: "5 min" } : {}) } : { single_use: true, amount_bound: run.amount, ...(beat === "mfa" ? { ttl: "5 min" } : {}) },
+    fields: rid ? { id: rid, single_use: true, amount_bound: issued.receipt?.amountBound ?? run.amount, ...(beat === "mfa" || beat === "push" ? { ttl: "5 min" } : {}) } : { single_use: true, amount_bound: run.amount, ...(beat === "mfa" || beat === "push" ? { ttl: "5 min" } : {}) },
   });
   cards.push({
     id: "outcome", title: "Transfer", status: spent ? "done" : denied ? "blocked" : "next", state: spent ? "executed" : denied ? "not executed" : "waiting for the receipt",

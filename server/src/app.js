@@ -21,6 +21,7 @@ import {
 } from './policy.js';
 import { buildHops, newTrace } from './trace.js';
 import { PRIVILEGE, PrivilegeError } from './privilege.js';
+import { PushError } from './push.js';
 import { WIZARD_STEPS, isWizardComplete } from './pingid.js';
 import { createWorkspaces, workspaceFrom } from './workspaces.js';
 
@@ -128,7 +129,7 @@ export function createApp({
     const amount = Number(body.amount);
     if (!Number.isFinite(amount) || amount < 0 || amount > LIMITS.amount) return res.status(400).json({ error: 'bad_amount', detail: 'amount must be a non-negative number within range' });
     const tool = typeof body.tool === 'string' && body.tool ? body.tool.slice(0, 64) : 'create_transfer';
-    const declaredStepUp = body.step_up_method === 'ciba' || body.step_up_method === 'p1mfa' || body.step_up_method === 'privilege' ? body.step_up_method : null;
+    const declaredStepUp = body.step_up_method === 'ciba' || body.step_up_method === 'p1mfa' || body.step_up_method === 'privilege' || body.step_up_method === 'pingid-push' ? body.step_up_method : null;
     // The retry of a held Privilege call carries the approval id in X-Procyon-Approval-Id (body.approval_id also works for scripts).
     const presentedApproval = typeof req.headers[PRIVILEGE.header.toLowerCase()] === 'string' ? req.headers[PRIVILEGE.header.toLowerCase()].slice(0, 64) : (typeof body.approval_id === 'string' ? body.approval_id.slice(0, 64) : null);
     const v = workspaces.state(ws);
@@ -164,7 +165,7 @@ export function createApp({
         };
       }
     } else if (flags.stepUpRequired) {
-      const kind = declaredStepUp === 'ciba' ? 'ciba' : 'stepUp';
+      const kind = declaredStepUp === 'ciba' ? 'ciba' : declaredStepUp === 'pingid-push' ? 'push' : 'stepUp';
       // A CIBA approval IS a human-in-the-loop event: the approval receipt (kind 'hitl', minted by
       // the out-of-band approve) discharges the ciba step-up on the retry — same beat, one receipt
       // (hitlCredit shape). The MFA credit (kind 'stepUp') discharges the device-MFA step-up.
@@ -181,7 +182,9 @@ export function createApp({
           error: kind === 'ciba' ? 'ciba_required' : 'mcp_step_up_required',
           detail: kind === 'ciba'
             ? 'CIBA: the agent must request out-of-band approval (bc-authorize) and present the polled approval.'
-            : 'MFA step-up: the human must complete device MFA before the transfer runs.',
+            : kind === 'push'
+              ? 'PingID push: the approver must approve the push on their phone before the transfer runs.'
+              : 'MFA step-up: the human must complete device MFA before the transfer runs.',
           step_up_method: declaredStepUp || 'p1mfa',
         };
       }
@@ -214,7 +217,7 @@ export function createApp({
     }
     return res.status(decision === 'DENY' ? 403 : 200).json({
       decision, reason: result.reason, tool, amount,
-      ...(receipt ? { receipt, receiptKind: declaredStepUp === 'privilege' ? 'privilege' : declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl' } : {}),
+      ...(receipt ? { receipt, receiptKind: declaredStepUp === 'privilege' ? 'privilege' : declaredStepUp === 'pingid-push' ? 'push' : declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl' } : {}),
       ...(approved ? { approval: { id: approved.id, method: approved.method, status: 'used' } } : {}),
       bands, workspace: ws, traceId: trace.traceId, hops,
     });
@@ -268,6 +271,32 @@ export function createApp({
     const v = workspaces.state(ws);
     const receipt = v.receipts.mint({ kind: 'stepUp', amount: challenge.amount, tool: challenge.tool, taskId: challenge.id });
     return res.json({ challenge: { id: challenge.id, status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
+  }));
+
+  // PingID push step-up (mock): the push goes to the approver's phone, the approver answers on it (the in-page mock phone) and the agent polls.
+  // Approval mints a single-use, amount-bound credit (kind 'push'). Nothing here calls PingOne or PingID.
+  api.post('/mfa/push', withWorkspace((ws, req, res) => {
+    const body = req.body || {};
+    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) && body.amount >= 0 && body.amount <= LIMITS.amount ? body.amount : null;
+    if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range: the approval is amount-bound' });
+    const v = workspaces.state(ws);
+    const challenge = v.push.start({ amount, tool: 'create_transfer', bindingMessage: typeof body.bindingMessage === 'string' ? body.bindingMessage : null });
+    return res.json({ challenge, workspace: ws });
+  }));
+  api.get('/mfa/poll/:id', withWorkspace((ws, req, res) => {
+    const v = workspaces.state(ws);
+    return res.json({ ...v.push.poll(String(req.params.id).slice(0, 64), v.receipts), workspace: ws });
+  }));
+  api.post('/mfa/push/:id/respond', withWorkspace((ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
+    const v = workspaces.state(ws);
+    try {
+      return res.json({ challenge: v.push.respond(String(req.params.id).slice(0, 64), body.decision), workspace: ws });
+    } catch (e) {
+      if (e instanceof PushError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      throw e;
+    }
   }));
 
   // CIBA (UC22): bc-authorize mints the auth_req_id; the user approves/denies out-of-band in the

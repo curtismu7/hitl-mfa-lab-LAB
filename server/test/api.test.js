@@ -86,7 +86,7 @@ test('GET /api/scenarios returns the filled story; customer.config.json is read 
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hml-')), 'customer.config.json');
   await withServer(async (url) => {
     let j = await (await fetch(`${url}/api/scenarios`)).json();
-    assert.equal(j.scenarios.length, 7);
+    assert.equal(j.scenarios.length, 8);
     assert.ok(!/\{\{/.test(JSON.stringify(j)), 'no unfilled token');
     assert.match(j.tokenLabel, /MOCK/);
     assert.ok(j.facts.some((f) => f.id === 'receipt-amount-bound' && f.status === 'measured'));
