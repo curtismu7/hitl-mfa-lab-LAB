@@ -18,6 +18,7 @@ import {
   evaluateAmountPolicy, normalizeBands, LIMITS,
 } from './policy.js';
 import { buildHops, newTrace } from './trace.js';
+import { WIZARD_STEPS, isWizardComplete } from './pingid.js';
 import { createWorkspaces, workspaceFrom } from './workspaces.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -240,6 +241,33 @@ export function createApp({
   api.get('/ciba/pending', withWorkspace((ws, _req, res) => {
     const v = workspaces.state(ws);
     res.json({ pending: v.ciba.all().filter((r) => r.status === 'pending'), workspace: ws });
+  }));
+
+  // ---- PingID setup wizard ----
+  // Mock guidance: the steps are the measured enrolment chain; "done" marks are per workspace.
+  // The live check never runs in here — the netguard keeps this process at zero outbound. It
+  // reports configuration PRESENCE only and hands back the owner-run checker script command.
+  const pingidLiveConfig = (e) => Boolean(e.HMLAB_PINGONE_ENV_ID && e.HMLAB_PINGONE_WORKER_CLIENT_ID && e.HMLAB_PINGONE_WORKER_CLIENT_SECRET);
+  api.get('/pingid/status', withWorkspace((ws, _req, res) => {
+    const v = workspaces.state(ws);
+    const liveConfigured = pingidLiveConfig(env);
+    res.json({
+      steps: WIZARD_STEPS, done: v.pingid.done, complete: isWizardComplete(v.pingid),
+      liveConfigured, workspace: ws,
+      ...(liveConfigured ? { liveCheck: 'node scripts/pingid-check.mjs' } : { liveHint: 'Set HMLAB_PINGONE_ENV_ID, HMLAB_PINGONE_WORKER_CLIENT_ID and HMLAB_PINGONE_WORKER_CLIENT_SECRET in .env (owner-run) to enable the live device check.' }),
+    });
+  }));
+  api.post('/pingid/step', withWorkspace((ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
+    if (!WIZARD_STEPS.some((s) => s.id === body.stepId)) return res.status(400).json({ error: 'unknown_step' });
+    const v = workspaces.state(ws);
+    if (!v.pingid.done.includes(body.stepId)) v.pingid.done.push(body.stepId);
+    return res.json({ done: v.pingid.done, complete: isWizardComplete(v.pingid), workspace: ws });
+  }));
+  api.post('/pingid/reset', withWorkspace((ws, _req, res) => {
+    workspaces.state(ws).pingid = { done: [] };
+    return res.json({ done: [], complete: false, workspace: ws });
   }));
   // Demo knob: let a pending CIBA request expire now instead of waiting out the TTL. Same end
   // state the clock produces: the next poll reports expired and the agent's call stays paused.

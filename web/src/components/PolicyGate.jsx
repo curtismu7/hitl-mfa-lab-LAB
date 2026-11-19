@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Json from "./Json";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
-import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent } from "../api";
+import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, startPush, pollPush, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent } from "../api";
 import { visible } from "../safeText";
+import PingIdSetup from "./PingIdSetup";
 
 const STATUS_CLASS = { measured: "tag tag--ok", inferred: "tag", UNVERIFIED: "tag tag--warn" };
 const DEMO_OTP = "123123"; // labelled demo bypass, shown in the MFA card
@@ -91,7 +92,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
       onResult(res.body);
       const beatPayload = { tool, amount: Number(amount) };
       if (declared) beatPayload.step_up_method = declared;
-      if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") onBlocked("mfa", beatPayload);
+      if (res.body.error === "mcp_step_up_required" && (res.body.step_up_method === "p1mfa" || res.body.step_up_method === "pingid-push")) onBlocked("mfa", beatPayload);
       else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", beatPayload, res.body.challengeId);
       else if (res.body.error === "ciba_required") onBlocked("ciba", beatPayload);
       else if (res.body.error === "mcp_hitl_required") onBlocked("hitl", beatPayload);
@@ -194,6 +195,54 @@ function MfaModal({ open, amount, onVerified, onClose }) {
   );
 }
 
+/** The real PingID push beat (owner-run Real mode): fires a REAL push to the enrolled phone,
+ * then polls until it is approved — the approval mints the same amount-bound stepUp receipt. */
+function PushModal({ open, amount, onVerified, onDenied, onClose }) {
+  const [challengeId, setChallengeId] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [binding, setBinding] = useState(null);
+  const [fired, setFired] = useState(false);
+  useEffect(() => {
+    if (!open) { setChallengeId(null); setMsg(null); setBinding(null); setFired(false); return; }
+    startPush({ amount }).then((r) => {
+      if (r.ok) { setChallengeId(r.body.challenge.id); setBinding(r.body.challenge.bindingMessage || null); setFired(true); }
+      else setMsg(r.body.detail || "Could not send the PingID push.");
+    }, () => setMsg("Could not send the PingID push."));
+  }, [open, amount]);
+  // Poll while pending; stop when the modal closes or a verdict arrives.
+  useEffect(() => {
+    if (!open || !challengeId || !fired) return;
+    let stop = false;
+    const tick = async () => {
+      const r = await pollPush(challengeId).catch(() => null);
+      if (stop) return;
+      if (r?.status === "verified" && r.receipt) onVerified(r.receipt);
+      else if (r?.status === "denied") onDenied();
+      else if (r?.status === "failed") setMsg("The push timed out or failed on the device — start the call again.");
+      else setTimeout(tick, 2000);
+    };
+    const t = setTimeout(tick, 1500);
+    return () => { stop = true; clearTimeout(t); };
+  }, [open, challengeId, fired, onVerified, onDenied]);
+  if (!open) return null;
+  return (
+    <FloatingDialog isOpen onClose={onClose} title="PingID push approval required" testId="push-modal"
+      defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
+      <div className="modal__card">
+        <p>The policy requires the human beat for <strong data-testid="push-amount">${amount}</strong>. A <strong>real PingID push</strong> was sent to the enrolled phone — check it now.</p>
+        {binding && <p className="muted">Binding message on the push: <code>{binding}</code></p>}
+        <p data-testid="push-wait" className={msg ? "field-error" : "muted"} role={msg ? "alert" : undefined}>
+          {msg || "Waiting for the push approval on your phone... approve it to continue."}
+        </p>
+        <div className="modal__actions">
+          <button type="button" onClick={onClose}>Dismiss</button>
+        </div>
+        <p className="muted">Approving on the phone mints a single-use, amount-bound step-up credit and the call is retried once. Denying leaves it paused.</p>
+      </div>
+    </FloatingDialog>
+  );
+}
+
 /** The CIBA beat: the agent's bc-authorize request, the phone panel (the human's own device),
  * and the agent polling. Approving on the phone mints the amount-bound receipt and auto-retries. */
 function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
@@ -267,6 +316,7 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
   const [run, setRun] = useState(null);
   const [fail, setFail] = useState(null);
   const [beat, setBeat] = useState(null); // { kind: 'hitl'|'mfa'|'ciba', amount }
+  const [pingidOpen, setPingidOpen] = useState(false);
   const scenario = story.scenarios.find((s) => s.id === id) || story.scenarios[0];
 
   const loadBands = useCallback(async () => {
@@ -293,7 +343,7 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
     if (drop()) return;
     if (res.ok || res.body.decision) {
       setRun(res.body);
-      if (res.body.error === "mcp_step_up_required" && res.body.step_up_method === "p1mfa") setBeat({ kind: "mfa", payload });
+      if (res.body.error === "mcp_step_up_required" && (res.body.step_up_method === "p1mfa" || res.body.step_up_method === "pingid-push")) setBeat({ kind: "mfa", payload });
       else if (res.body.error === "ciba_required") setBeat({ kind: "ciba", payload });
       else if (res.body.error === "mcp_hitl_required") setBeat({ kind: "hitl", payload, challengeId: res.body.challengeId });
     } else { setRun(null); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
@@ -329,12 +379,22 @@ export default function PolicyGate({ story, resetSignal, requestedId, onSelect }
       </section>
       {bands && <BandsEditor current={bands} onSaved={(b) => { setBandsState(b); if (!beat) runScenario(id, { applyBands: false }); }} />}
       <AgentCall tools={story.tools} onResult={onResult} onBlocked={onBlocked} />
+      <section className="panel" aria-labelledby="pingid-h">
+        <h2 id="pingid-h">PingID for real</h2>
+        <p className="muted">The lab mocks the step-up. If the user does not have PingID yet, walk the measured enrolment chain — in your own PingOne environment, not here.</p>
+        <button type="button" data-testid="pingid-setup-open" onClick={() => setPingidOpen(true)}>Configure PingID for a user</button>
+      </section>
+      <PingIdSetup open={pingidOpen} onClose={() => setPingidOpen(false)} resetSignal={resetSignal} />
       <ConsentModal open={beat?.kind === "hitl"} amount={beat?.payload?.amount} challengeId={beat?.challengeId}
         onApproved={() => { setBeat(null); retrySame(); }}
         onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "consent_denied", detail: "The human denied the request; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />
-      <MfaModal open={beat?.kind === "mfa"} amount={beat?.payload?.amount}
+      <MfaModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method !== "pingid-push"} amount={beat?.payload?.amount}
         onVerified={() => { setBeat(null); retrySame(); }}
+        onClose={() => setBeat(null)} />
+      <PushModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method === "pingid-push"} amount={beat?.payload?.amount}
+        onVerified={() => { setBeat(null); retrySame(); }}
+        onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "push_denied", detail: "The push was denied on the phone; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />
       <CibaModal open={beat?.kind === "ciba"} amount={beat?.payload?.amount}
         onApproved={() => { setBeat(null); retrySame(); }}
