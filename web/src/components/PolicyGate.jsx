@@ -518,8 +518,9 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       const r = await pollRealPingidPush(realPush.daId).catch(() => null);
       if (!r?.ok) return;
       const st = r.body?.status;
-      if (st === "approved") setRealPush((p) => ({ ...p, status: "approved", stop: true }));
-      else if (st === "denied" || st === "failed") setRealPush((p) => ({ ...p, status: st, stop: true }));
+      const answered = { upstream: r.body.upstream || null, at: new Date().toLocaleTimeString() };
+      if (st === "approved") setRealPush((p) => ({ ...p, ...answered, status: "approved", stop: true }));
+      else if (st === "denied" || st === "failed") setRealPush((p) => ({ ...p, ...answered, status: st, stop: true }));
     }, 3000);
     return () => clearInterval(t);
   }, [realPush.daId, realPush.stop]);
@@ -603,6 +604,14 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
                   {realPush.status === "denied" && "Refused on the phone. Nothing is approved."}
                   {realPush.status === "failed" && (realPush.reason ? `The push failed: ${realPush.reason}` : "The push failed or timed out. Send it again.")}
                 </p>
+                {realPush.upstream && (
+                  <p className="phone__msg" role="status" data-testid="real-push-result">
+                    <strong>
+                      {realPush.status === "approved" ? "PingID answered: APPROVED. The real push worked." : realPush.status === "denied" ? "PingID answered: REFUSED." : "PingID gave no answer."}
+                    </strong>{" "}
+                    PingOne reported <code>{realPush.upstream}</code> at {realPush.at}.
+                  </p>
+                )}
                 <div className="modal__actions">
                   {realPush.status !== "waiting" && (
                     <button type="button" data-testid="real-push-send" disabled={realPush.status === "sending"} onClick={realSendPush}>
