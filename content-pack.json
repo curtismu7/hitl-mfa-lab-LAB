@@ -119,8 +119,23 @@
       "story": "S03"
     },
     {
+      "id": "try-pingid-push",
+      "label": "Scenario 4: PUSH: $150 approved with a PingID push on the phone",
+      "description": "The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver's phone (\"Are you trying to sign on?\") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-pingid-push"
+      },
+      "terms": [
+        "mfa",
+        "ciba"
+      ],
+      "story": "S04"
+    },
+    {
       "id": "try-deny-ceiling",
-      "label": "Scenario 4: DENY: $2500 exceeds the hard limit",
+      "label": "Scenario 5: DENY: $2500 exceeds the hard limit",
       "description": "Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it.",
       "group": "try-it",
       "action": {
@@ -130,11 +145,11 @@
       "terms": [
         "deny"
       ],
-      "story": "S04"
+      "story": "S05"
     },
     {
       "id": "try-privilege-pingid",
-      "label": "Scenario 5: PRIVILEGE: $150 held for PingID approval",
+      "label": "Scenario 6: PRIVILEGE: $150 held for PingID approval",
       "description": "An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs.",
       "group": "try-it",
       "action": {
@@ -145,11 +160,11 @@
         "hitl",
         "mfa"
       ],
-      "story": "S05"
+      "story": "S06"
     },
     {
       "id": "try-receipt-replay",
-      "label": "Scenario 6: REPLAY: the same approved receipt cannot be used twice",
+      "label": "Scenario 7: REPLAY: the same approved receipt cannot be used twice",
       "description": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer.",
       "group": "try-it",
       "action": {
@@ -159,11 +174,11 @@
       "terms": [
         "receipts"
       ],
-      "story": "S06"
+      "story": "S07"
     },
     {
       "id": "try-receipt-amount-bound",
-      "label": "Scenario 7: BOUND: approving $300 does not authorize $600",
+      "label": "Scenario 8: BOUND: approving $300 does not authorize $600",
       "description": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA.",
       "group": "try-it",
       "action": {
@@ -173,7 +188,7 @@
       "terms": [
         "receipts"
       ],
-      "story": "S07"
+      "story": "S08"
     },
     {
       "id": "concept-editor",
@@ -214,21 +229,26 @@
     },
     {
       "id": "S04",
+      "title": "PUSH: $150 approved with a PingID push on the phone",
+      "say": "The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver's phone (\"Are you trying to sign on?\") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard)."
+    },
+    {
+      "id": "S05",
       "title": "DENY: $2500 exceeds the hard limit",
       "say": "Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it."
     },
     {
-      "id": "S05",
+      "id": "S06",
       "title": "PRIVILEGE: $150 held for PingID approval",
       "say": "An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs."
     },
     {
-      "id": "S06",
+      "id": "S07",
       "title": "REPLAY: the same approved receipt cannot be used twice",
       "say": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer."
     },
     {
-      "id": "S07",
+      "id": "S08",
       "title": "BOUND: approving $300 does not authorize $600",
       "say": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA."
     }

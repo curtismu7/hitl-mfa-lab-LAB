@@ -38,9 +38,10 @@ export async function runTool(payload, { approvalId = null } = {}) {
 export const startMfa = (payload) => postJson("/api/mfa/challenge", payload);
 export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
 
-// Real PingID push (owner-run): fire the push, then poll until the phone approves.
+// PingID push (mock): fire the push, poll until the phone answers, and (the mock phone) answer it.
 export const startPush = (payload) => postJson("/api/mfa/push", payload);
 export const pollPush = (id) => getJson(`/api/mfa/poll/${encodeURIComponent(id)}`);
+export const respondPush = (id, decision) => postJson(`/api/mfa/push/${encodeURIComponent(id)}/respond`, { decision });
 
 // PingID setup wizard: the measured enrolment chain, per workspace.
 export const pingidStatus = () => getJson("/api/pingid/status");

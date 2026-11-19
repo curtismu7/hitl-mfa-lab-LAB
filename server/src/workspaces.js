@@ -2,6 +2,7 @@
 // the receipts, the CIBA requests, the recent runs. Bounded in count, size and age.
 import { createReceiptStore, createCibaStore } from './policy.js';
 import { createPrivilegeStore } from './privilege.js';
+import { createPushStore } from './push.js';
 import { emptyWizard } from './pingid.js';
 
 export const WORKSPACE_RE = /^[a-z0-9-]{1,40}$/;
@@ -31,6 +32,7 @@ export function createWorkspaces({ max = 500, ttlMs = 60 * 60 * 1000, now = Date
     receipts: receiptStore ? receiptStore : createReceiptStore({ now }),
     ciba: cibaStore ? cibaStore : createCibaStore({ now }),
     privilege: createPrivilegeStore({ now }),
+    push: createPushStore({ now }),
     pingid: emptyWizard(),
   });
   return {

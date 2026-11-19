@@ -64,6 +64,18 @@ export function buildHops({ trace, cast, decision, obligation, reason, tool, amo
         request: `PingID ${privilege.approval.method} (mock)\ntraceparent: ${tp(ids[3])}\n${privilege.approval.method === 'push' ? 'prompt: Are you trying to sign on?' : 'passcode entered (demo passcode)'}`,
         response: `approver confirmed (mock)\nrequest ${privilege.approval.id}: approved` },
     );
+  } else if (decision === 'STEP_UP' && step_up_method === 'pingid-push') {
+    hops.push(
+      { n: 3, from: 'policy', to: 'idp', label: 'PingID: a push goes to the approver phone (mock)', traceparent: tp(ids[2]),
+        request: `POST /mfa/push\ntraceparent: ${tp(ids[2])}\nbinding_message: Approve ${amount} transfer\nmethod: pingid-push`,
+        response: '{ challenge: { id: <push id>, status: pending, expiresInSeconds: 60 } }' },
+      { n: 4, from: 'idp', to: 'human', label: 'The approver answers on the phone', traceparent: tp(ids[3]),
+        request: `push notification (mock phone)\ntraceparent: ${tp(ids[3])}`,
+        response: 'Approve, or "No, it is not me"' },
+      { n: 5, from: 'agent', to: 'idp', label: 'Agent polls for the answer', traceparent: tp(ids[4]),
+        request: `GET /mfa/poll/<push id>\ntraceparent: ${tp(ids[4])}`,
+        response: 'status: pending, then verified (a single-use, amount-bound credit) or denied' },
+    );
   } else if (decision === 'STEP_UP' && step_up_method === 'ciba') {
     hops.push(
       { n: 3, from: 'policy', to: 'idp', label: 'CIBA: bc-authorize mints the auth_req_id', traceparent: tp(ids[2]),

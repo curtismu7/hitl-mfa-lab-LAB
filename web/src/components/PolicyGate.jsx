@@ -5,7 +5,7 @@ import LiveFlow from "./LiveFlow";
 import GatewayTrace from "../gateway-trace/GatewayTrace.jsx";
 import TokenReel from "./TokenReel";
 import { nextTrail, realRun, reelCards } from "../liveFlow";
-import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush } from "../api";
+import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
 import { visible } from "../safeText";
 import PingIdSetup from "./PingIdSetup";
 
@@ -119,6 +119,7 @@ function AgentCall({ tools, onResult, onBlocked }) {
         <option value="">none (amount bands decide)</option>
         <option value="p1mfa">p1mfa (device MFA, amount-independent)</option>
         <option value="ciba">ciba (out-of-band on the phone, amount-independent)</option>
+        <option value="pingid-push">pingid-push (PingID push on the approver's phone, amount-independent)</option>
         <option value="privilege">privilege (Privilege gateway hold, PingID-confirmed approver)</option>
       </select>
       {/* ui-pattern: allow P9 never shown with the Real panel: while the scenario is Real this whole component is replaced by a note */}
@@ -203,49 +204,75 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
   );
 }
 
-/** The real PingID push beat (owner-run Real mode): fires a REAL push to the enrolled phone,
- * then polls until it is approved — the approval mints the same amount-bound stepUp receipt. */
-function PushModal({ open, amount, onVerified, onDenied, onClose }) {
+/** The PingID push beat. The server (mock) sends a push to the approver's phone; the agent polls until the phone answers. Approve mints a
+ * single-use, amount-bound credit and the call is retried once; "No, it's not me" leaves it held. Here the phone is the labelled mock panel
+ * below: nothing is sent to PingOne or a real device (that live path is owner-run and not wired into this server). */
+function PushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
   const [challengeId, setChallengeId] = useState(null);
   const [msg, setMsg] = useState(null);
   const [binding, setBinding] = useState(null);
   const [fired, setFired] = useState(false);
+  const [answered, setAnswered] = useState(false);
+  // The callbacks arrive as fresh inline arrows on every parent render; holding them in a ref keeps the push and its polling stable.
+  const callbacks = useRef({ onVerified, onDenied, onIssued });
+  useEffect(() => { callbacks.current = { onVerified, onDenied, onIssued }; });
   useEffect(() => {
-    if (!open) { setChallengeId(null); setMsg(null); setBinding(null); setFired(false); return; }
-    startPush({ amount }).then((r) => {
-      if (r.ok) { setChallengeId(r.body.challenge.id); setBinding(r.body.challenge.bindingMessage || null); setFired(true); }
-      else setMsg(r.body.detail || "Could not send the PingID push.");
-    }, () => setMsg("Could not send the PingID push."));
-  }, [open, amount]);
-  // Poll while pending; stop when the modal closes or a verdict arrives.
-  useEffect(() => {
-    if (!open || !challengeId || !fired) return;
+    if (!open) { setChallengeId(null); setMsg(null); setBinding(null); setFired(false); setAnswered(false); return; }
     let stop = false;
+    startPush({ amount }).then((r) => {
+      if (stop) return;
+      if (r.ok) {
+        setChallengeId(r.body.challenge.id); setBinding(r.body.challenge.bindingMessage || null); setFired(true);
+        if (callbacks.current.onIssued) callbacks.current.onIssued({ id: r.body.challenge.id, bindingMessage: r.body.challenge.bindingMessage });
+      } else setMsg(r.body.detail || "Could not send the PingID push.");
+    }, () => { if (!stop) setMsg("Could not send the PingID push."); });
+    return () => { stop = true; };
+  }, [open, amount]);
+  // Poll while pending; stop when the modal closes or an answer arrives.
+  useEffect(() => {
+    if (!open || !challengeId || !fired) return undefined;
+    let stop = false; let timer = null;
     const tick = async () => {
       const r = await pollPush(challengeId).catch(() => null);
       if (stop) return;
-      if (r?.status === "verified" && r.receipt) onVerified(r.receipt);
-      else if (r?.status === "denied") onDenied();
-      else if (r?.status === "failed") setMsg("The push timed out or failed on the device — start the call again.");
-      else setTimeout(tick, 2000);
+      if (r?.status === "verified" && r.receipt) callbacks.current.onVerified(r.receipt);
+      else if (r?.status === "denied") callbacks.current.onDenied();
+      else if (r?.status === "failed") setMsg("The push timed out or failed: start the call again.");
+      else timer = setTimeout(tick, 1500);
     };
-    const t = setTimeout(tick, 1500);
-    return () => { stop = true; clearTimeout(t); };
-  }, [open, challengeId, fired, onVerified, onDenied]);
+    timer = setTimeout(tick, 800);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [open, challengeId, fired]);
   if (!open) return null;
+  const answer = async (decision) => {
+    if (answered || !challengeId) return;
+    setAnswered(true); setMsg(null);
+    const r = await respondPush(challengeId, decision).catch(() => ({ ok: false, body: {} }));
+    if (!r.ok) { setAnswered(false); setMsg(r.body.detail || "The phone could not deliver that answer."); }
+    // The agent's next poll picks the answer up; the dialog stays until then.
+  };
   return (
-    <FloatingDialog isOpen onClose={onClose} title="PingID push approval required" testId="push-modal"
+    <FloatingDialog isOpen placement="right" onClose={onClose} title="PingID push approval required" testId="push-modal"
       defaultWidth={480} defaultHeight={null} minHeight={200} footer={null}>
       <div className="modal__card">
-        <p>The policy requires the human beat for <strong data-testid="push-amount">${amount}</strong>. A <strong>real PingID push</strong> was sent to the enrolled phone — check it now.</p>
+        <p>The policy requires a PingID push for <strong data-testid="push-amount">${amount}</strong>. A <strong>mock</strong> push was sent to the approver's phone; the agent is polling for the answer.</p>
         {binding && <p className="muted">Binding message on the push: <code>{binding}</code></p>}
+        {challengeId && (
+          <div className="phone" data-testid="push-phone" aria-label="The approver's phone (mock)">
+            <p className="phone__msg"><strong>PingID (mock phone)</strong> — Are you trying to sign on?</p>
+            <div className="modal__actions">
+              <button type="button" data-testid="push-approve" disabled={answered} onClick={() => answer("approved")}>Approve</button>
+              <button type="button" data-testid="push-deny" disabled={answered} onClick={() => answer("denied")}>No, it's not me</button>
+            </div>
+          </div>
+        )}
         <p data-testid="push-wait" className={msg ? "field-error" : "muted"} role={msg ? "alert" : undefined}>
-          {msg || "Waiting for the push approval on your phone... approve it to continue."}
+          {msg || "Waiting for the answer on the phone..."}
         </p>
         <div className="modal__actions">
           <button type="button" onClick={onClose}>Dismiss</button>
         </div>
-        <p className="muted">Approving on the phone mints a single-use, amount-bound step-up credit and the call is retried once. Denying leaves it paused.</p>
+        <p className="muted">Approving mints a single-use, amount-bound credit and the call is retried once. In your own PingOne environment the same push goes to a real phone (see the PingID setup wizard); this one is simulated.</p>
       </div>
     </FloatingDialog>
   );
@@ -563,8 +590,8 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       <MfaModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method !== "pingid-push"} amount={beat?.payload?.amount} onIssued={onIssued}
         onVerified={(receipt) => { onMinted(receipt); setBeat(null); retrySame(); }}
         onClose={() => setBeat(null)} />
-      <PushModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method === "pingid-push"} amount={beat?.payload?.amount}
-        onVerified={() => { setBeat(null); retrySame(); }}
+      <PushModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method === "pingid-push"} amount={beat?.payload?.amount} onIssued={onIssued}
+        onVerified={(receipt) => { onMinted(receipt); setBeat(null); retrySame(); }}
         onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "push_denied", detail: "The push was denied on the phone; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />
       <CibaModal open={beat?.kind === "ciba"} amount={beat?.payload?.amount} onIssued={onIssued}

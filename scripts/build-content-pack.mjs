@@ -12,7 +12,7 @@ const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 export function buildPack() {
   const story = buildStory(DEFAULT_CAST);
   const sid = (n) => `S${String(n).padStart(2, '0')}`;
-  const terms = { 'consent-hitl': ['hitl'], 'mfa-step-up': ['mfa'], 'ciba-150': ['ciba'], 'privilege-pingid': ['hitl', 'mfa'], 'deny-ceiling': ['deny'], 'receipt-replay': ['receipts'], 'receipt-amount-bound': ['receipts'] };
+  const terms = { 'consent-hitl': ['hitl'], 'mfa-step-up': ['mfa'], 'ciba-150': ['ciba'], 'pingid-push': ['mfa', 'ciba'], 'privilege-pingid': ['hitl', 'mfa'], 'deny-ceiling': ['deny'], 'receipt-replay': ['receipts'], 'receipt-amount-bound': ['receipts'] };
   return {
     schema: 'demo-content-pack/1',
     id: 'hitl-mfa-lab',
