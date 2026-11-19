@@ -180,8 +180,8 @@ button.running, button.primary.running { background: var(--accent-gradient); bor
 .phone .muted { color: var(--on-box); opacity: 0.75; font-size: var(--font-size-xs); }
 .phone .modal__actions { background: transparent; border: 0; padding: 0; margin-top: auto; }
 .phone .modal__actions button { flex: 1 1 100%; min-height: 46px; border-radius: 12px; border: 0; font-weight: 600; }
-/* The approve beat is green on the device (AI-DEMO2's FOOTER_BTN_APPROVE); deny/expire stay quiet. P10: backgrounds read shared tokens only. */
-.phone .modal__actions button.primary,
+/* The approve beat is green on the device (AI-DEMO2's FOOTER_BTN_APPROVE); deny/expire stay quiet. P10: backgrounds read shared tokens only;
+   the phone's approve buttons are not `primary` (that class is the fixed Ping Red gradient), so this rule never touches a .primary button. */
 .phone .modal__actions button[data-testid$="-approve"] { background: var(--th-ok); color: var(--on-accent); font-size: var(--font-size-base); }
 .phone .modal__actions button[data-testid$="-deny"],
 .phone .modal__actions button[data-testid$="-expire"] { background: var(--surface-2); color: var(--on-box); }
