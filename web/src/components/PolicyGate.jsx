@@ -428,6 +428,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   const [realMsg, setRealMsg] = useState(null);
   const [realCfg, setRealCfg] = useState(null);
   const [realPingCfg, setRealPingCfg] = useState(null);
+  const [realPhoneOpen, setRealPhoneOpen] = useState(true);
   const [realPush, setRealPush] = useState({ daId: null, status: "idle", stop: true });
   const [approvalInput, setApprovalInput] = useState("");
   // Real mode (owner-run) makes ONE scenario real: the PRIVILEGE hold. Every other scenario stays simulated.
@@ -587,8 +588,11 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
             </p>
             {/* ui-pattern: allow P9 only shown while the scenario is Real, when the mock AgentCall (the other primary) is not rendered */}
             <button type="button" className="primary" data-testid="real-call" disabled={realBusy} onClick={() => realCall(null)}>Send the real call</button>
+            {realPingCfg?.available && !realPhoneOpen && (
+              <button type="button" className="link" data-testid="real-pingid-reopen" onClick={() => setRealPhoneOpen(true)}>Show the PingID phone</button>
+            )}
             {realPingCfg?.available && (
-              <PhoneDialog isOpen onClose={null} title="PingID — real push" testId="real-pingid" singletonKey="real-pingid-phone">
+              <PhoneDialog isOpen={realPhoneOpen} onClose={() => setRealPhoneOpen(false)} title="PingID — real push" testId="real-pingid" singletonKey="real-pingid-phone">
                 <p className="phone__app">PingID</p>
                 <p className="phone__msg">
                   {realPush.status === "idle" && "Send a real push to your enrolled PingID app, then approve there. Approving here proves the approver; the console approval of the hold is still yours."}
