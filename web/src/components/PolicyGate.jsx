@@ -516,16 +516,17 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     if (!realPush.daId || realPush.stop) return undefined;
     const t = setInterval(async () => {
       const r = await pollRealPingidPush(realPush.daId).catch(() => null);
-      if (!r) return;
-      if (r.status === "approved") setRealPush((p) => ({ ...p, status: "approved", stop: true }));
-      else if (r.status === "denied" || r.status === "failed") setRealPush((p) => ({ ...p, status: r.status, stop: true }));
+      if (!r?.ok) return;
+      const st = r.body?.status;
+      if (st === "approved") setRealPush((p) => ({ ...p, status: "approved", stop: true }));
+      else if (st === "denied" || st === "failed") setRealPush((p) => ({ ...p, status: st, stop: true }));
     }, 3000);
     return () => clearInterval(t);
   }, [realPush.daId, realPush.stop]);
   const realSendPush = async () => {
     setRealPush({ daId: null, status: "sending", stop: false });
     const r = await sendRealPingidPush(`Approve $150 transfer hold`).catch(() => ({ ok: false }));
-    if (!r.ok) return setRealPush({ daId: null, status: "failed", stop: true });
+    if (!r.ok) return setRealPush({ daId: null, status: "failed", stop: true, reason: r.body?.message || null });
     setRealPush({ daId: r.body.daId, status: "waiting", stop: false });
   };
   useEffect(() => { if (realActive && run?.real && run?.error === "pending_approval") setApprovalInput(run.approval?.instruction_id || ""); }, [realActive, run]);
@@ -600,7 +601,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
                   {realPush.status === "waiting" && "Push sent. Check your phone: approve to confirm, or refuse."}
                   {realPush.status === "approved" && "Approved on the phone. Retry the call with the approval id below."}
                   {realPush.status === "denied" && "Refused on the phone. Nothing is approved."}
-                  {realPush.status === "failed" && "The push failed or timed out. Send it again."}
+                  {realPush.status === "failed" && (realPush.reason ? `The push failed: ${realPush.reason}` : "The push failed or timed out. Send it again.")}
                 </p>
                 <div className="modal__actions">
                   {realPush.status !== "waiting" && (

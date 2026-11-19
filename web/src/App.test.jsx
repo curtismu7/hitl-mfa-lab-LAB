@@ -63,6 +63,9 @@ function mockFetch() {
       return json({ bands: override.bands, workspace: "t" });
     }
     if (url === "/api/privilege/real" && (!opts.method || opts.method === "GET")) return json({ mode: "real", ok: true, host: "gw.example", tool: "IndexMappingTool", retryHeader: "X-Procyon-Approval-Id" });
+    if (url === "/api/privilege/real/pingid") return json({ mode: "real", available: true });
+    if (url === "/api/privilege/real/pingid/push") return override.pushFail ? json({ error: "pingid_select_refused", message: "device select refused (HTTP 400)" }, 502) : json({ sent: true, daId: "da1" });
+    if (url === "/api/privilege/real/pingid/poll") return json({ status: "approved", upstream: "COMPLETED" });
     if (url === "/api/privilege/real/call") {
       const b = JSON.parse(opts.body || "{}");
       if (override.realFail) return json({ error: "upstream_unreachable", message: "Could not reach the gateway: ECONNREFUSED", trace: realTrace(null, null) }, 502);
@@ -427,6 +430,14 @@ describe("Real mode (owner-run)", () => {
     await waitFor(() => expect(screen.getByTestId("real-msg")).toHaveTextContent("Could not reach the gateway"));
     expect(screen.getByTestId("banner")).toBeInTheDocument();
   }, 15000);
+  it("a real PingID push the phone approved shows Approved, and a refused push shows the server's reason", async () => {
+    await realReady();
+    await userEvent.click(await screen.findByTestId("real-push-send"));
+    await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent(/Approved on the phone/), { timeout: 8000 });
+    override.pushFail = true;
+    await userEvent.click(await screen.findByTestId("real-push-send"));
+    await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent("The push failed: device select refused (HTTP 400)"));
+  }, 20000);
   it("the mock Try-your-own-call is not offered on the Real scenario, so a mock id can never reach the real gateway", async () => {
     await realReady();
     await userEvent.click(screen.getByText(/Try your own call/));

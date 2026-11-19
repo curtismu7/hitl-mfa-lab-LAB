@@ -63,3 +63,20 @@ test('pollPush maps COMPLETED to approved and DENIED to denied', async () => {
 test('pollPush refuses a bad daId without calling out', async () => {
   await assert.rejects(pollPush({ env, daId: '../x', fetchImpl: () => { throw new Error('must not call'); } }), PingidError);
 });
+
+test('resolveUserDevice skips non-MOBILE devices', async () => {
+  const calls = [okToken, () => jsonRes({ _embedded: { users: [{ id: 'u1' }] } }), () => jsonRes({ _embedded: { devices: [{ id: 's1', status: 'ACTIVE', type: 'SMS' }, { id: 'd2', status: 'ACTIVE', type: 'MOBILE' }] } })];
+  const { device } = await resolveUserDevice(pingidPushConfigFrom(env), fakeFetch(calls));
+  assert.equal(device.id, 'd2');
+  const none = [okToken, () => jsonRes({ _embedded: { users: [{ id: 'u1' }] } }), () => jsonRes({ _embedded: { devices: [{ id: 's1', status: 'ACTIVE', type: 'SMS' }] } })];
+  await assert.rejects(resolveUserDevice(pingidPushConfigFrom(env), fakeFetch(none)), (e) => e.code === 'pingid_not_enrolled');
+});
+
+test('sendPush does not select again when initiate already fired the push', async () => {
+  const calls = [];
+  userAndDevice(calls);
+  calls.push(okToken, () => jsonRes({ id: 'da2', status: 'PUSH_CONFIRMATION_REQUIRED' }));
+  const r = await sendPush({ env, fetchImpl: fakeFetch(calls) });
+  assert.equal(r.daId, 'da2');
+  assert.equal(calls.length, 0);
+});
