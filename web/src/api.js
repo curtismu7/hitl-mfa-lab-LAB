@@ -38,6 +38,15 @@ export async function runTool(payload, { approvalId = null } = {}) {
 export const startMfa = (payload) => postJson("/api/mfa/challenge", payload);
 export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
 
+// Real PingID push (owner-run): fire the push, then poll until the phone approves.
+export const startPush = (payload) => postJson("/api/mfa/push", payload);
+export const pollPush = (id) => getJson(`/api/mfa/poll/${encodeURIComponent(id)}`);
+
+// PingID setup wizard: the measured enrolment chain, per workspace.
+export const pingidStatus = () => getJson("/api/pingid/status");
+export const pingidStep = (stepId) => postJson("/api/pingid/step", { stepId });
+export const pingidReset = () => postJson("/api/pingid/reset", {});
+
 // HITL consent (UC8): respond to the surfaced challenge; approval mints the receipt.
 export const respondConsent = (payload) => postJson("/api/consent/respond", payload);
 
