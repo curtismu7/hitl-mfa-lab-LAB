@@ -5,7 +5,7 @@ import { netguardSelfTest } from './netguard.js';
 import { DEFAULT_CAST, VERTICALS, unfilled } from './cast.js';
 import { buildStory, rawStory } from './story.js';
 import { evaluateAmountPolicy, normalizeBands } from './policy.js';
-import { modeFrom, realAvailableFrom } from './config.js';
+import { modeFrom, realAvailableFrom, realConfigFrom } from './config.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 
 export async function runChecks({ env = process.env, cast = DEFAULT_CAST } = {}) {
@@ -17,6 +17,8 @@ export async function runChecks({ env = process.env, cast = DEFAULT_CAST } = {})
 
   try { add('mode', 'pass', `mode=${modeFrom(env)}${realAvailableFrom(env) ? ' (Real configured)' : ' (Mock only)'}${env.HMLAB_HOSTED === '1' ? '; hosted build' : ''}`); }
   catch (e) { add('mode', 'fail', e.message); }
+
+  { const rc = realConfigFrom(env); if (rc.any && !rc.ok) add('real-config', 'fail', rc.problem); else if (rc.ok) add('real-config', 'pass', `Real is configured for ${rc.host} (tool ${rc.tool}); only that host may be reached, and only while Real is on`); }
 
   try { add('bind', 'pass', `${assertBindAllowed(bindHost(env), env)}${env.HMLAB_BIND ? ' (HMLAB_BIND opt-in)' : ' (loopback)'}`); }
   catch (e) { add('bind', 'fail', e.message); }

@@ -93,3 +93,14 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .return-link { --border: var(--th-border-strong); --surface: var(--th-bg-card); --text: var(--th-text); --focus: var(--th-status-info); }
 /* The vendored FloatingDialog (src/floating-dialog) uses the shared token names; map them to this app's tokens, for the dialog only. */
 .fd-backdrop, .fd-panel, .fd-placeholder, .fd-popout-document { --surface: var(--th-bg-card); --surface-2: var(--th-bg-inset); --border: var(--th-border-strong); --text: var(--th-text); --focus: var(--th-status-info); --accent: var(--th-accent); --accent-soft: var(--th-bg-hover); --status-warn: var(--th-status-warning); --font-primary: var(--font-sans); --shadow-ink: color-mix(in srgb, var(--th-text-lt) 45%, transparent); }
+
+/* Transfer gate tab: one column, numbered top to bottom (pick, flow, token reel, result), the rest folded away. */
+.gate-flow { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.gate-step h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gate-step__n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-gradient); color: var(--on-accent); font: 800 var(--font-size-sm) var(--font-mono); }
+.gate-step h2 .muted { font-weight: 400; }
+.flow-now { margin: 0 0 8px; padding: 8px 12px; border-left: 4px solid var(--th-status-info); background: var(--th-status-info-bg); border-radius: var(--radius-md); font-size: var(--font-size-base); }
+.gate-more > summary { font-size: var(--font-size-base); }
+.gate-more[open] > summary { margin-bottom: 10px; }
+.gate-more .gate { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+.gate-more .panel { background: var(--th-bg-inset); }

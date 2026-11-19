@@ -66,7 +66,7 @@ test('docs/talk-track.md is exactly what the talk-track data renders (no drift; 
 test('the diagram is diagram-studio/1 data and every step walks a real edge', () => {
   const d = rawDiagram();
   assert.equal(d.schema, 'diagram-studio/1');
-  assert.equal(d.steps.length, 5);
+  assert.equal(d.steps.length, 6);
   for (const s of d.steps) for (const i of s.edges) assert.ok(d.edges[i], `${s.title} edge ${i}`);
 });
 

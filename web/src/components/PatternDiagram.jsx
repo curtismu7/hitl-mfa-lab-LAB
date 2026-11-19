@@ -45,7 +45,19 @@ function sides(a, b) {
   return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? ["r", "l"] : ["l", "r"]) : (dy > 0 ? ["b", "t"] : ["t", "b"]);
 }
 
-function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen }) {
+// Is another box sitting on the straight line between the two boxes of this arrow?
+export function blockedBy(nodes, positions, s) {
+  const p = positions[s.from], q = positions[s.to];
+  if (!p || !q || p.x === q.x) return false;
+  const [lo, hi] = p.x < q.x ? [p.x, q.x] : [q.x, p.x];
+  return nodes.some((n) => {
+    const o = positions[n.id];
+    if (n.id === s.from || n.id === s.to || !o || o.x <= lo || o.x >= hi) return false;
+    return Math.abs(o.y - (p.y + ((q.y - p.y) * (o.x - p.x)) / (q.x - p.x))) < 50;
+  });
+}
+
+function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen, compact }) {
   const ref = useRef(null);
   useFitOnResize(ref, FIT);
   const active = stepper.step >= 0 ? pattern.steps[stepper.step] : null;
@@ -58,6 +70,8 @@ function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen }) {
     let [a, b] = sides(positions[s.from], positions[s.to]);
     // A reply along the same pair of boxes leaves from the side instead, so the two arrows and labels do not overlap.
     if (pattern.steps.slice(0, i).some((o) => o.from === s.to && o.to === s.from)) [a, b] = a === "l" || a === "r" ? ["b", "b"] : ["r", "r"];
+    // Live view: an arrow whose straight line would run through another box goes round it (below), so it never reads as passing through that box.
+    else if (compact && blockedBy(pattern.nodes, positions, s)) [a, b] = ["b", "b"];
     const cp = s.to === "rule";
     const now = stepper.step === i;
     const seen = stepper.step >= 0 && i <= stepper.step;
@@ -81,7 +95,7 @@ function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen }) {
   return (
     <div ref={ref} className="pat-canvas" data-testid="pattern-canvas">
       <PassportActions.Provider value={actions}>
-        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={FIT} nodesConnectable={false} minZoom={0.3}
+        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={FIT} nodesConnectable={false} minZoom={0.3} zoomOnScroll={!compact} preventScrolling={!compact}
           onNodeClick={(_, n) => setOpen((o) => (o === n.id ? null : n.id))} onPaneClick={() => setOpen(null)}
           onNodeDragStop={(_, n) => onMove(n.id, n.position)} onNodeDrag={(_, n) => onMove(n.id, n.position)} proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={18} />
@@ -94,35 +108,39 @@ function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen }) {
   );
 }
 
-export default function PatternDiagram({ pattern, resetSignal = 0 }) {
+// liveStep (a number) puts the diagram in live mode: the caller drives which arrow is current (the Transfer gate tab draws the run as it happens),
+// and the Simulate bar, title and notes are left to the caller. compact makes the canvas shorter. Without them nothing changes.
+export default function PatternDiagram({ pattern, resetSignal = 0, liveStep = null, compact = false }) {
   const initial = useMemo(() => Object.fromEntries(pattern.nodes.map((n) => [n.id, { x: n.x, y: n.y }])), [pattern]);
   const [positions, setPositions] = useState(initial);
-  const stepper = useDiagramStepper(pattern.steps.length);
+  const walker = useDiagramStepper(pattern.steps.length);
+  const live = liveStep !== null;
+  const stepper = useMemo(() => (live ? { ...walker, step: liveStep, active: liveStep >= 0 } : walker), [live, liveStep, walker]);
   // The pattern as a graph (boxes and arrows) for the box details; a box's kind is its group.
   const graph = useMemo(() => ({ nodes: pattern.nodes.map((n) => ({ id: n.id, label: n.label, group: n.kind })), edges: pattern.steps.map((st, i) => ({ source: st.from, target: st.to, label: `${i + 1}. ${st.label}` })) }), [pattern]);
   const [open, setOpen] = useState(() => { const box = new URLSearchParams(window.location.search).get("box"); return box && pattern.nodes.some((n) => n.id === box) ? box : null; }); // a shared link's box
   const onMove = useCallback((id, p) => setPositions((cur) => ({ ...cur, [id]: { x: p.x, y: p.y } })), []);
   const step = stepper.step >= 0 ? pattern.steps[stepper.step] : null;
   // Reset restores box positions as well as the walkthrough and the view. The page-level Reset raises resetSignal.
-  const reset = useCallback(() => { stepper.stop(); setPositions(initial); setOpen(null); setTimeout(() => window.dispatchEvent(new Event(REFIT_EVENT)), 0); }, [stepper.stop, initial]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reset = useCallback(() => { walker.stop(); setPositions(initial); setOpen(null); setTimeout(() => window.dispatchEvent(new Event(REFIT_EVENT)), 0); }, [walker.stop, initial]); // eslint-disable-line react-hooks/exhaustive-deps
   const seen = useRef(resetSignal);
   useEffect(() => { if (seen.current !== resetSignal) { seen.current = resetSignal; reset(); } }, [resetSignal, reset]);
   return (
-    <section className="pat" aria-label={pattern.title}>
-      <h2 className="pat__title">{pattern.title}</h2>
-      <p className="intro">{pattern.intro}</p>
-      <DiagramStepBar stepper={stepper} caption={step ? step.label : ""} testId="pattern-step-bar" />
-      <button type="button" className="pat-reset" onClick={reset} data-testid="pattern-reset">Reset positions and walkthrough</button>
-      {step && (
+    <section className={`pat${compact ? " pat--compact" : ""}`} aria-label={pattern.title}>
+      {!live && <h2 className="pat__title">{pattern.title}</h2>}
+      {!live && <p className="intro">{pattern.intro}</p>}
+      {!live && <DiagramStepBar stepper={stepper} caption={step ? step.label : ""} testId="pattern-step-bar" />}
+      {!live && <button type="button" className="pat-reset" onClick={reset} data-testid="pattern-reset">Reset positions and walkthrough</button>}
+      {step && !live && (
         <article className="track__now" data-testid="pattern-now">
           <h3>Step {stepper.step + 1}: {step.label}</h3>
           <p>{step.say}</p>
         </article>
       )}
       <ReactFlowProvider>
-        <Canvas pattern={pattern} graph={graph} positions={positions} onMove={onMove} stepper={stepper} open={open} setOpen={setOpen} />
+        <Canvas pattern={pattern} graph={graph} positions={positions} onMove={onMove} stepper={stepper} open={open} setOpen={setOpen} compact={compact} />
       </ReactFlowProvider>
-      <p className="keys">Drag any box. Mock-issued token values; hosts are examples. Moved: {Object.keys(positions).filter((k) => positions[k].x !== initial[k].x || positions[k].y !== initial[k].y).length} box(es).</p>
+      {live ? <p className="keys">Drag any box. <button type="button" className="link" onClick={reset} data-testid="pattern-reset">Reset positions</button></p> : <p className="keys">Drag any box. Mock-issued token values; hosts are examples. Moved: {Object.keys(positions).filter((k) => positions[k].x !== initial[k].x || positions[k].y !== initial[k].y).length} box(es).</p>}
     </section>
   );
 }

@@ -18,9 +18,10 @@ export const TABS = [
 // The banner is never blank and never claims "not hosted" before it knows: until /api/info or /api/scenarios answers (or if both fail)
 // it says both, honestly.
 const TAIL = "Nothing here calls a real gateway, identity provider or tenant.";
-export const BANNER_UNKNOWN = `SIMULATED / HOSTED SIMULATION: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
-const BANNER_LOCAL = `SIMULATED: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
-const BANNER_HOSTED = `HOSTED SIMULATION: a mock transfer gate, mock MFA step-up and a mock CIBA out-of-band approval. ${TAIL}`;
+export const BANNER_UNKNOWN = `SIMULATED / HOSTED SIMULATION: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
+const BANNER_LOCAL = `SIMULATED: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
+const BANNER_REAL = `REAL MODE: the PRIVILEGE scenario sends a real tools/call to the Privilege gateway configured in this lab's .env and shows its real answer; the approval is yours, in the Privilege console with PingID. Every other scenario, and the approver dialog, is still simulated.`;
+const BANNER_HOSTED = `HOSTED SIMULATION: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
 
 const hashParts = () => {
   const h = window.location.hash.replace("#", "");
@@ -76,7 +77,7 @@ export default function App() {
   }, [info]);
 
   const hosted = story ? !!story.hosted : info ? !!info.hosted : null;
-  const banner = story ? story.banner : hosted === true ? BANNER_HOSTED : hosted === false ? BANNER_LOCAL : BANNER_UNKNOWN;
+  const banner = info?.mode === "real" ? BANNER_REAL : story ? story.banner : hosted === true ? BANNER_HOSTED : hosted === false ? BANNER_LOCAL : BANNER_UNKNOWN;
   return (
     <div className={`app${presenter ? " app--presenter" : ""}`}>
       <header className="shell-bar">
@@ -94,7 +95,7 @@ export default function App() {
           ))}
         </nav>
         <TopMenu
-          mode={{ value: info?.mode === "real" ? "real" : "mock", onChange: switchMode, realAvailable: info?.realAvailable ?? null, realHint: "Real is owner-run and RESERVED in this build: the toggle reports it, the live-gateway data path is not wired yet." }}
+          mode={{ value: info?.mode === "real" ? "real" : "mock", onChange: switchMode, realAvailable: info?.realAvailable ?? null, realHint: "Real is owner-run: it needs HMLAB_REAL_URL, HMLAB_REAL_AGENT_KEY and HMLAB_REAL_TOOL in this lab's .env. It makes the PRIVILEGE scenario call your real gateway; everything else stays simulated." }}
           vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["retail"] }}
           present={{ active: presenter, onToggle: () => setPresenter((v) => !v) }}
           talkTrack={{ active: tab === "talk", onToggle: () => select("talk") }}
@@ -114,14 +115,14 @@ export default function App() {
         <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
         {!presenter && story && <div className="page-head"><p className="intro">{story.intro}</p></div>}
         <div id={`panel-${tab}`}>
-          {error ? null : !story ? <p className="muted">Loading...</p> : (
+          {error ? null : !story || info === undefined ? <p className="muted">Loading...</p> : (
             <>
               {presenter && tab !== "talk" && (
                 <aside className="presenter-say" data-testid="presenter-say" aria-label="Talk track">
                   {story.talkTrack.filter((t) => (tab === "gate" ? ["say-first", "bands", "precedence", "ciba", "receipts", "pingid", "unverified"] : ["say-first"]).includes(t.id)).map((t) => <p key={t.id}><strong>{t.title}.</strong> {t.say}</p>)}
                 </aside>
               )}
-              {tab === "gate" && <PolicyGate key={vertical} story={story} resetSignal={resetSignal} requestedId={requested} onSelect={pickScenario} />}
+              {tab === "gate" && <PolicyGate key={vertical} vertical={vertical} mode={info?.mode === "real" ? "real" : "mock"} story={story} resetSignal={resetSignal} requestedId={requested} onSelect={pickScenario} />}
               {tab === "diagram" && <DiagramTab vertical={vertical} resetSignal={resetSignal} />}
               {tab === "talk" && <TalkTrack talk={story.talkTrack} />}
             </>

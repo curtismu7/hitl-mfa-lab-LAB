@@ -1,0 +1,5 @@
+# sha256 of the files labs copy unchanged into web/src/gateway-trace/ (GatewayTrace.jsx, gateway-trace.css, gateway-trace.test.jsx) and server/src/ (gatewayTrace.js). Re-pin: shasum -a 256 GatewayTrace.jsx gateway-trace.css gatewayTrace.js gateway-trace.test.jsx
+00d02068eaca8dc489cf831a190f736fc5a5fa8df79556607b99ca71443f3124  GatewayTrace.jsx
+945c779062e2e4bcbfd9a1f225b9f506fa2eb7ac28af61b6f5e110c44f5aa4d8  gateway-trace.css
+c3178e7c5158adc248dc3e5e741b2df7cc38faab7f7141a4cce9514f85ffc42d  gatewayTrace.js
+d0a15dbb7d9b14d3bc7244946f01b7d2691ab17c5ba79913b683c57b1b57d62d  gateway-trace.test.jsx

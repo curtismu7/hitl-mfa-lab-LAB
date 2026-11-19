@@ -70,15 +70,18 @@ export function evaluateAmountPolicy({ amount, bands = DEFAULT_BANDS, declaredSt
   if (amt > bands.denyCeilingUsd) {
     return { decision: 'DENY', obligation: null, reason: `amount ${amt} exceeds the hard limit of ${bands.denyCeilingUsd}` };
   }
-  // A use case may DECLARE its step-up method ('ciba' | 'p1mfa') — amount-independent,
-  // honoured regardless of band (still below a hard DENY). This is the UC22/UC7 trigger.
-  if (declaredStepUp === 'ciba' || declaredStepUp === 'p1mfa') {
+  // A use case may DECLARE its step-up method ('ciba' | 'p1mfa' | 'privilege') — amount-independent,
+  // honoured regardless of band (still below a hard DENY). This is the UC22/UC7 trigger;
+  // 'privilege' is a Privilege AI-gateway "Require human approval" hold confirmed with PingID.
+  if (declaredStepUp === 'ciba' || declaredStepUp === 'p1mfa' || declaredStepUp === 'privilege') {
     return {
       decision: 'STEP_UP',
       obligation: { type: 'STEP_UP', step_up_method: declaredStepUp },
       reason: declaredStepUp === 'ciba'
         ? 'sensitive agent-initiated action: out-of-band approval requested (amount-independent)'
-        : 'policy requires device MFA for this action',
+        : declaredStepUp === 'privilege'
+          ? 'an AI policy on the Privilege gateway holds this call for human approval, confirmed with PingID (amount-independent)'
+          : 'policy requires device MFA for this action',
     };
   }
   if (amt >= bands.mfaUsd) {

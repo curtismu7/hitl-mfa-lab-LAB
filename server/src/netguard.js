@@ -7,6 +7,44 @@ import { isLoopbackHost } from './safety.js';
 
 let active = null;
 
+// Real mode (owner-run) may reach EXACTLY ONE configured name: the Privilege gateway door. Everything else stays refused. The allowlist
+// is empty by default, is set only while Real is on, and is cleared when Mock is chosen. Addresses are learned from that name's own
+// lookup, so a connect() to an IP is allowed only if the allowed name resolved to it.
+const allowedHosts = new Set();
+const allowedIps = new Set();
+let allowPrivate = false; // owner opt-in (HMLAB_REAL_ALLOW_PRIVATE=1): the gateway lives on a private network
+export const allowHost = (host, { privateOk = false } = {}) => { if (!active) return false; allowedHosts.add(String(host).toLowerCase().replace(/^\[|\]$/g, '')); allowPrivate = !!privateOk; return true; };
+export const clearAllowedHosts = () => { allowedHosts.clear(); allowedIps.clear(); allowPrivate = false; };
+
+/** Private, loopback, link-local (incl. the cloud metadata address), CGNAT, multicast, unspecified and ULA addresses. A name that is
+ * allowed for the real gateway must not be able to point a call at an internal address (DNS rebinding / SSRF). */
+export function isPrivateAddress(addr) {
+  const a = String(addr).toLowerCase().replace(/^\[|\]$/g, '');
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a);
+  if (mapped) return isPrivateAddress(mapped[1]);
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(a);
+  if (v4) {
+    const [x, y] = [Number(v4[1]), Number(v4[2])];
+    return x === 0 || x === 10 || x === 127 || (x === 100 && y >= 64 && y <= 127) || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || x >= 224;
+  }
+  if (a.includes(':')) return a === '::' || a === '::1' || /^f[cd]/.test(a) || /^fe[89ab]/.test(a) || /^ff/.test(a);
+  return true; // not an address we understand: refuse
+}
+export const allowedHostList = () => [...allowedHosts];
+const nameAllowed = (h) => allowedHosts.has(String(h).toLowerCase().replace(/^\[|\]$/g, ''));
+const connAllowed = (h) => nameAllowed(h) || allowedIps.has(String(h).toLowerCase().replace(/^\[|\]$/g, ''));
+// Learn the addresses of the allowed name, but only public ones: a private one is refused (unless the owner opted in), so it is neither
+// learned nor connected to. Returns the offending address, or null.
+const learn = (res) => {
+  for (const a of [res].flat()) {
+    const addr = typeof a === 'string' ? a : a?.address;
+    if (!addr) continue;
+    if (!allowPrivate && isPrivateAddress(addr)) return String(addr);
+    allowedIps.add(String(addr).toLowerCase());
+  }
+  return null;
+};
+
 export function installNetguard() {
   if (active) return active;
   const attempts = [];
@@ -44,12 +82,24 @@ export function installNetguard() {
   };
   net.Socket.prototype.connect = function guardedConnect(...args) {
     const host = hostOf(args);
-    if (!isLoopbackHost(host)) { attempts.push(`socket:${host}`); throw new Error(`network blocked: ${host}`); }
+    if (!isLoopbackHost(host) && !connAllowed(host)) { attempts.push(`socket:${host}`); throw new Error(`network blocked: ${host}`); }
     return real.connect.apply(this, args);
   };
   dns.lookup = function guardedLookup(host, ...rest) {
     // listen() resolves its bind address through lookup. A wildcard bind (the container's HMLAB_BIND=0.0.0.0) is not outbound,
     // and connecting to it is still refused by the socket guard above, so only the lookup is allowed.
+    if (nameAllowed(host) && !isLoopbackHost(host)) {
+      const i = rest.findIndex((r) => typeof r === 'function');
+      if (i >= 0) {
+        const cb = rest[i];
+        rest[i] = (err, address, family) => {
+          const bad = err ? null : learn(address);
+          if (bad) { attempts.push(`private:${host}`); return cb(new Error(`network blocked: ${host} resolves to a private address`)); }
+          return cb(err, address, family);
+        };
+      }
+      return real.lookup.call(dns, host, ...rest);
+    }
     if (!isLoopbackHost(host) && host !== '0.0.0.0' && host !== '::') {
       attempts.push(`dns:${host}`);
       const cb = rest.find((r) => typeof r === 'function');
@@ -58,12 +108,21 @@ export function installNetguard() {
     return real.lookup.call(dns, host, ...rest);
   };
   dns.promises.lookup = async function guardedPromiseLookup(host, ...rest) {
+    if (nameAllowed(host) && !isLoopbackHost(host)) {
+      const res = await real.plookup.call(dns.promises, host, ...rest);
+      if (learn(res)) { attempts.push(`private:${host}`); throw new Error(`network blocked: ${host} resolves to a private address`); }
+      return res;
+    }
     if (!isLoopbackHost(host) && host !== '0.0.0.0' && host !== '::') { attempts.push(`dns:${host}`); throw new Error(`network blocked: ${host}`); }
     return real.plookup.call(dns.promises, host, ...rest);
   };
   globalThis.fetch = async function guardedFetch(input, init) {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    if (!isLoopbackHost(url.hostname)) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
+    if (!isLoopbackHost(url.hostname)) {
+      // The one allowed name, over https only, and never a redirect: a redirect could leave the allowed origin.
+      if (!(nameAllowed(url.hostname) && url.protocol === 'https:')) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
+      return real.fetch(input, { ...init, redirect: 'error' });
+    }
     return real.fetch(input, init);
   };
   dgram.Socket.prototype.send = function guardedSend(...args) {
@@ -78,6 +137,7 @@ export function installNetguard() {
   active = {
     attempts,
     restore() {
+      clearAllowedHosts();
       for (const [holder, name, orig] of savedResolvers) holder[name] = orig;
       dns.promises.lookup = real.plookup;
       net.Socket.prototype.connect = real.connect; dns.lookup = real.lookup; globalThis.fetch = real.fetch; dgram.Socket.prototype.send = real.send;

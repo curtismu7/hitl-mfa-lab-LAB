@@ -3,7 +3,7 @@ import { installNetguard } from './netguard.js';
 import { startHttpServer, createApp } from './app.js';
 import { allPassed, runChecks } from './doctor.js';
 import { assertBindAllowed, bindHost, resolvePort } from './safety.js';
-import { hostedFrom, modeFrom, realAvailableFrom } from './config.js';
+import { hostedFrom, modeFrom, realAvailableFrom, realConfigFrom } from './config.js';
 
 installNetguard(); // before anything else can open a socket
 
@@ -17,5 +17,5 @@ if (!allPassed(checks)) {
 console.log(`[hitl-mfa-lab] starting in ${modeFrom()} mode`);
 const host = assertBindAllowed(bindHost(), process.env);
 const { url } = await startHttpServer({ port: resolvePort(), host, app: createApp({ hosted: hostedFrom(process.env) }) });
-console.log(`[hitl-mfa-lab] lab at ${url} (loopback${realAvailableFrom() ? ', Real configured' : ', Mock only — no outbound network'})`);
+console.log(`[hitl-mfa-lab] lab at ${url} (loopback${realAvailableFrom() ? `, Real configured: only ${realConfigFrom().host} may be reached, and only while Real is on` : ', Mock only — no outbound network'})`);
 console.log(`[hitl-mfa-lab] health: ${url}api/health`);

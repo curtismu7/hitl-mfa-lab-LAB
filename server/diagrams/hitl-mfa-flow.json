@@ -63,6 +63,20 @@
       "group": "resource",
       "x": 900,
       "y": 240
+    },
+    {
+      "id": "approver",
+      "label": "Privilege HITL Requests: the approver decides",
+      "group": "human",
+      "x": 300,
+      "y": 400
+    },
+    {
+      "id": "pingid",
+      "label": "PingID confirms the approver (push or passcode)",
+      "group": "human",
+      "x": 600,
+      "y": 560
     }
   ],
   "edges": [
@@ -113,6 +127,22 @@
       "source": "policy",
       "target": "transfer",
       "label": "receipt presented: transfer executes"
+    },
+    {
+      "source": "policy",
+      "target": "approver",
+      "label": "HELD: 403 pending_approval (Privilege)"
+    },
+    {
+      "source": "approver",
+      "target": "pingid",
+      "label": "PingID confirms the approver"
+    },
+    {
+      "source": "pingid",
+      "target": "policy",
+      "label": "approval id, one transaction (90 s)",
+      "dashed": true
     }
   ],
   "steps": [
@@ -152,6 +182,15 @@
       "what": "Only the right receipt lets the retried call through — consumed on use, so it can never approve a second transfer.",
       "edges": [
         8
+      ]
+    },
+    {
+      "title": "Privilege hold, approved with PingID",
+      "what": "An AI policy on the Privilege gateway holds the call (403 pending_approval). The approver decides it in HITL Requests; PingID confirms them with a push or a passcode; the agent retries with the approval id and the transfer runs once.",
+      "edges": [
+        9,
+        10,
+        11
       ]
     }
   ]

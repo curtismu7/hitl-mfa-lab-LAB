@@ -23,3 +23,6 @@
 /* An expanded box (the kit's .dk-open) is wider and its details read left to right. */
 .pat-node.dk-open { min-width: 18rem; max-width: 22rem; text-align: left; font-weight: 400; }
 .pat-node.dk-open .dk-passport { font-weight: 400; }
+/* Live (Transfer gate tab): a shorter canvas, same boxes. */
+.pat--compact .pat-canvas { height: 470px; }
+@media (max-width: 480px) { .pat--compact .pat-canvas { height: 440px; } }

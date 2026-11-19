@@ -14,6 +14,11 @@ services:
       PORT: "7680"
       HMLAB_BIND: 0.0.0.0
       LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-hitl-mfa-lab.local.ping-devops.com}
+      # Real mode (owner-run, optional). Set these in the .env beside this file; empty means Mock only. See .env.example.
+      HMLAB_REAL_URL: ${HMLAB_REAL_URL:-}
+      HMLAB_REAL_AGENT_KEY: ${HMLAB_REAL_AGENT_KEY:-}
+      HMLAB_REAL_TOOL: ${HMLAB_REAL_TOOL:-}
+      HMLAB_REAL_ARGS: ${HMLAB_REAL_ARGS:-}
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
