@@ -430,6 +430,12 @@ describe("Real mode (owner-run)", () => {
     await waitFor(() => expect(screen.getByTestId("real-msg")).toHaveTextContent("Could not reach the gateway"));
     expect(screen.getByTestId("banner")).toBeInTheDocument();
   }, 15000);
+  it("the Real panel tells the owner how PingID goes through Privilege and labels the lab's own push as direct", async () => {
+    await realReady();
+    expect(screen.getByTestId("real-checklist")).toHaveTextContent(/MFA is Enabled/);
+    expect(screen.getByTestId("real-checklist")).toHaveTextContent(/Require human approval/);
+    expect(screen.getByText(/direct push from this lab \(not Privilege\)/)).toBeInTheDocument();
+  }, 15000);
   it("a real PingID push the phone approved shows Approved, and a refused push shows the server's reason", async () => {
     await realReady();
     await userEvent.click(await screen.findByTestId("real-push-send"));
