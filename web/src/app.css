@@ -270,3 +270,43 @@ button.running, button.primary.running { background: var(--accent-gradient); bor
 .phone-dialog .phone--window { gap: 10px; }
 .phone-dialog .modal__actions button[data-testid="pingid-deny"] { background: var(--th-deny); color: var(--on-accent); }
 .phone-dialog .phone__msg { font-size: var(--font-size-base); }
+
+/* The bezel is the status bar: hide the window title text, let the notch and 9:41 carry the top
+   (drag still works anywhere on the titlebar; pop-out and close stay top-right, iOS-control sized). */
+.phone-dialog .fd-title { visibility: hidden; }
+.phone-dialog .fd-titlebar { padding: 10px 12px 2px; }
+.phone-dialog .fd-btn { min-width: 24px; min-height: 24px; font-size: 12px; opacity: 0.85; }
+.phone-dialog .phone--window::before { top: 12px; }
+.phone-dialog .phone--window::after { top: 8px; }
+.phone-dialog .phone--window { padding-top: 34px; }
+
+/* iPhone feel, pass 3: iOS status glyphs right of the time and a home indicator at the bottom.
+   Glyphs live on .phone-dialog .fd-body::before; the indicator on .phone-dialog .fd-body::after. */
+.phone-dialog .fd-body { position: relative; }
+.phone-dialog .fd-body::before {
+  content: "";
+  position: absolute;
+  top: -24px;
+  right: 18px;
+  width: 58px;
+  height: 10px;
+  background:
+    radial-gradient(circle 2px at 51px 5px, var(--on-box) 98%, transparent) ,
+    linear-gradient(to right, transparent 0 4px, var(--on-box) 4px 22px, transparent 22px 26px, var(--on-box) 26px 44px, transparent 44px 48px, var(--on-box) 48px 56px, transparent 56px);
+  -webkit-mask: none;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.phone-dialog .fd-body::after {
+  content: "";
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--on-box);
+  opacity: 0.5;
+  pointer-events: none;
+}
