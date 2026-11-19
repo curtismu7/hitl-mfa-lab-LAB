@@ -45,6 +45,8 @@ export const respondConsent = (payload) => postJson("/api/consent/respond", payl
 export const bcAuthorize = (payload) => postJson("/api/ciba/bc-authorize", payload);
 export const pollCiba = (authReqId) => getJson(`/api/ciba/poll/${encodeURIComponent(authReqId)}`);
 export const respondCiba = (payload) => postJson("/api/ciba/respond", payload);
+// Demo knob: let a pending request expire now instead of waiting out the TTL.
+export const expireCiba = (authReqId) => postJson("/api/ciba/expire", { authReqId });
 export const pendingCiba = () => getJson("/api/ciba/pending");
 
 async function postJson(url, payload) {
