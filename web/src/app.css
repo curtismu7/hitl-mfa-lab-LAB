@@ -180,11 +180,13 @@ button.running, button.primary.running { background: var(--accent-gradient); bor
 .phone-screen .muted { color: var(--on-box); opacity: 0.75; font-size: var(--font-size-xs); }
 .phone-screen .modal__actions { background: transparent; border: 0; padding: 0; margin-top: auto; }
 .phone-screen .modal__actions button { flex: 1 1 100%; min-height: 46px; border-radius: 12px; border: 0; font-weight: 600; }
+/* Deny/expire are quiet ON THE DEVICE, which is fixed-dark in both themes: translucent white on the wallpaper
+   (the shared .phone__btn recipe), never the page theme's --surface-2 (light-on-light in the light theme). */
+.phone-screen .modal__actions button[data-testid$="-deny"],
+.phone-screen .modal__actions button[data-testid$="-expire"] { background: color-mix(in srgb, var(--on-box) 18%, transparent); border: 1px solid color-mix(in srgb, var(--on-box) 35%, transparent); color: var(--on-box); }
 /* The approve beat is green on the device (AI-DEMO2's FOOTER_BTN_APPROVE); deny/expire stay quiet. P10: backgrounds read shared tokens only;
    the phone's approve buttons are not `primary` (that class is the fixed Ping Red gradient), so this rule never touches a .primary button. */
 .phone-screen .modal__actions button[data-testid$="-approve"] { background: var(--th-ok); color: var(--on-accent); font-size: var(--font-size-base); }
-.phone-screen .modal__actions button[data-testid$="-deny"],
-.phone-screen .modal__actions button[data-testid$="-expire"] { background: var(--surface-2); color: var(--on-box); }
 .phone-screen .modal__actions button[data-testid="pingid-deny"] { background: var(--th-deny-bg); color: var(--th-deny-text); }
 .phone-screen input { color: var(--th-text); border-radius: 12px; }
 .phone__app { margin: 0 0 4px; font-size: var(--font-size-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-box); opacity: 0.7; }
