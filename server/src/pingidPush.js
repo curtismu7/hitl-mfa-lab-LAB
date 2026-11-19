@@ -57,8 +57,8 @@ export async function resolveUserDevice(cfg, fetchImpl) {
   if (users.length > 1) throw new PingidError('pingid_user_ambiguous', `HMLAB_PINGONE_USERNAME matched ${users.length} users; refine it`, 409);
   const user = users[0];
   const devices = (await getJson(`${cfg.apiBase}/users/${user.id}/devices`, token, fetchImpl))._embedded?.devices ?? [];
-  const active = devices.filter((d) => d.status === 'ACTIVE' && d.pushEnabled !== false);
-  if (!active.length) throw new PingidError('pingid_not_enrolled', `the user has no ACTIVE PingID device — walk the lab's PingID setup wizard first`, 409);
+  const active = devices.filter((d) => d.type === 'MOBILE' && d.status === 'ACTIVE' && d.pushEnabled !== false);
+  if (!active.length) throw new PingidError('pingid_not_enrolled', `the user has no ACTIVE MOBILE (PingID app) device — walk the lab's PingID setup wizard first`, 409);
   return { user, device: active[0] };
 }
 
@@ -78,13 +78,17 @@ export async function sendPush({ bindingMessage, fetchImpl = (...a) => globalThi
   const authn = await ar.json();
   const daId = authn.id;
   if (!daId || !API_RE.test(daId)) throw new PingidError('pingid_unexpected', 'device authentication did not return a usable id');
-  const sr = await fetchImpl(`${cfg.authBase}/deviceAuthentications/${daId}`, {
-    method: 'POST', headers: { ...auth, 'Content-Type': 'application/vnd.pingidentity.device.select+json' },
-    body: JSON.stringify({ device: { id: device.id }, compatibility: 'FULL' }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (!sr.ok) throw new PingidError('pingid_select_refused', `device select refused (HTTP ${sr.status})`);
-  const selected = await sr.json();
+  // PingOne may fire the push already at initiate; selecting again would send a second push and invalidate the first.
+  let selected = authn;
+  if (authn.status !== 'PUSH_CONFIRMATION_REQUIRED') {
+    const sr = await fetchImpl(`${cfg.authBase}/deviceAuthentications/${daId}`, {
+      method: 'POST', headers: { ...auth, 'Content-Type': 'application/vnd.pingidentity.device.select+json' },
+      body: JSON.stringify({ device: { id: device.id }, compatibility: 'FULL' }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!sr.ok) throw new PingidError('pingid_select_refused', `device select refused (HTTP ${sr.status})`);
+    selected = await sr.json();
+  }
   if (selected.status !== 'PUSH_CONFIRMATION_REQUIRED') throw new PingidError('pingid_unexpected_status', `expected PUSH_CONFIRMATION_REQUIRED, got ${selected.status}`);
   return { daId, bindingMessage: bindingMessage || 'Approve this request' };
 }
