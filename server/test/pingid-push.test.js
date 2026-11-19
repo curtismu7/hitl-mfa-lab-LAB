@@ -80,3 +80,9 @@ test('sendPush does not select again when initiate already fired the push', asyn
   assert.equal(r.daId, 'da2');
   assert.equal(calls.length, 0);
 });
+
+test('a network failure is a PingidError, never a bare TypeError that would crash the server', async () => {
+  const boom = () => Promise.reject(Object.assign(new TypeError('fetch failed'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } }));
+  await assert.rejects(sendPush({ env, fetchImpl: boom }), (e) => e instanceof PingidError && e.code === 'pingid_unreachable' && /UND_ERR_CONNECT_TIMEOUT/.test(e.message));
+  await assert.rejects(pollPush({ env, daId: 'da1', fetchImpl: boom }), (e) => e instanceof PingidError && e.code === 'pingid_unreachable');
+});

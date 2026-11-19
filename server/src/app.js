@@ -110,7 +110,7 @@ export function createApp({
       res.json({ sent: true, daId, bindingMessage });
     } catch (e) {
       if (e instanceof PingidError) return res.status(e.status).json({ error: e.code, message: e.message });
-      throw e;
+      return res.status(500).json({ error: 'pingid_internal', message: 'the PingID push failed unexpectedly' });
     }
   });
   api.post('/privilege/real/pingid/poll', async (req, res) => {
@@ -121,7 +121,7 @@ export function createApp({
       res.json(await pollPush({ daId, env }));
     } catch (e) {
       if (e instanceof PingidError) return res.status(e.status).json({ error: e.code, message: e.message });
-      throw e;
+      return res.status(500).json({ error: 'pingid_internal', message: 'the PingID push failed unexpectedly' });
     }
   });
 
