@@ -31,6 +31,13 @@ export class PingidError extends Error {
   constructor(code, detail, status = 502) { super(detail); this.code = code; this.status = status; }
 }
 
+// A network failure (timeout, DNS, unreachable) must be a PingidError: a bare fetch TypeError escaping an async Express 4 route is an unhandled rejection and kills the whole server.
+const guarded = (fetchImpl) => async (...a) => {
+  try { return await fetchImpl(...a); } catch (e) {
+    throw e instanceof PingidError ? e : new PingidError('pingid_unreachable', `could not reach PingOne (${e?.cause?.code || e?.name || 'network error'}); check the network and try again`, 502);
+  }
+};
+
 async function workerToken(cfg, fetchImpl) {
   const r = await fetchImpl(`${cfg.authBase}/as/token`, {
     method: 'POST',
@@ -49,7 +56,8 @@ const getJson = async (url, token, fetchImpl) => {
 };
 
 /** Resolve the configured user and its ACTIVE PingID device. One user, one device; never returns ids to the caller beyond what the push needs. */
-export async function resolveUserDevice(cfg, fetchImpl) {
+export async function resolveUserDevice(cfg, rawFetch) {
+  const fetchImpl = guarded(rawFetch);
   const token = await workerToken(cfg, fetchImpl);
   const filter = encodeURIComponent(`username eq "${cfg.username.replace(/"/g, '')}"`);
   const users = (await getJson(`${cfg.apiBase}/users?filter=${filter}`, token, fetchImpl))._embedded?.users ?? [];
@@ -63,7 +71,8 @@ export async function resolveUserDevice(cfg, fetchImpl) {
 }
 
 /** Fire the push. Returns the device-authentication id the caller polls. */
-export async function sendPush({ bindingMessage, fetchImpl = (...a) => globalThis.fetch(...a), env = process.env } = {}) {
+export async function sendPush({ bindingMessage, fetchImpl: rawFetch = (...a) => globalThis.fetch(...a), env = process.env } = {}) {
+  const fetchImpl = guarded(rawFetch);
   const cfg = pingidPushConfigFrom(env);
   if (!cfg.ok) throw new PingidError('pingid_not_configured', cfg.problem, 409);
   const { user, device } = await resolveUserDevice(cfg, fetchImpl);
@@ -94,7 +103,8 @@ export async function sendPush({ bindingMessage, fetchImpl = (...a) => globalThi
 }
 
 /** Poll the push. COMPLETED means the phone approved. */
-export async function pollPush({ daId, fetchImpl = (...a) => globalThis.fetch(...a), env = process.env } = {}) {
+export async function pollPush({ daId, fetchImpl: rawFetch = (...a) => globalThis.fetch(...a), env = process.env } = {}) {
+  const fetchImpl = guarded(rawFetch);
   const cfg = pingidPushConfigFrom(env);
   if (!cfg.ok) throw new PingidError('pingid_not_configured', cfg.problem, 409);
   if (!API_RE.test(daId)) throw new PingidError('bad_da_id', 'the device-authentication id must be 1-64 letters, digits or _ . : -', 400);
