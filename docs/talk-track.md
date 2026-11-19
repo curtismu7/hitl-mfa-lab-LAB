@@ -26,6 +26,10 @@ Approvals are receipts, not vibes: single-use, consume-on-use, and amount-bound 
 
 The step-up code is 123123 — a labelled demo bypass so a presenter can complete MFA without a real device.
 
+## PingID push on the phone
+
+For a sensitive agent action the policy can require a PingID push. A push goes to the approver's phone and the agent polls for the answer. Approve mints a single-use credit bound to the amount; the retry runs once, and a second try is held again. "No, it's not me" leaves it held and issues nothing. In this lab the phone is a mock on the page; the push itself is not sent anywhere. What we measured for real is the sign-in step-up, not an API-driven push.
+
 ## Privilege hold, approved with PingID
 
 Here the human beat runs through the Privilege gateway. An AI policy holds the agent's transfer: 403, pending_approval, an instruction id, nothing executed. The approver opens HITL Requests and approves; PingID makes them prove it is them with a push or a passcode. Only then does the agent's retry, carrying the approval id, go through, once, inside 90 seconds. All of it is simulated here, copied from a recording of a real Privilege tenant; on our own tenant that exact response and the PingID step are not yet confirmed.
@@ -47,7 +51,8 @@ Reset clears your workspace: bands, challenges, receipts and runs. Nothing was s
 1. **HITL: $300 needs human consent.** The amount clears the confirm bar but not the MFA bar: the agent pauses, a consent modal is surfaced, and only an explicit human approval (a single-use receipt) lets it proceed.
 2. **MFA: $600 steps up to device MFA.** The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT.
 3. **CIBA: $150, approved out-of-band on the phone.** Note the amount — below every band. A person in-browser would sail through. But an AGENT moving money is a sensitive agent-initiated action, so approval is requested out-of-band (bc-authorize, then poll) on the user's phone. Amount-independent by design.
-4. **DENY: $2500 exceeds the hard limit.** Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it.
-5. **PRIVILEGE: $150 held for PingID approval.** An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs.
-6. **REPLAY: the same approved receipt cannot be used twice.** An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer.
-7. **BOUND: approving $300 does not authorize $600.** The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA.
+4. **PUSH: $150 approved with a PingID push on the phone.** The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver's phone ("Are you trying to sign on?") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, "No, it's not me" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).
+5. **DENY: $2500 exceeds the hard limit.** Above the ceiling the policy denies outright. DENY outranks every obligation — no receipt, no MFA, no approval can clear it.
+6. **PRIVILEGE: $150 held for PingID approval.** An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs.
+7. **REPLAY: the same approved receipt cannot be used twice.** An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer.
+8. **BOUND: approving $300 does not authorize $600.** The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA.

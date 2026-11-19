@@ -100,6 +100,16 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 /* The vendored FloatingDialog (src/floating-dialog) uses the shared token names; map them to this app's tokens, for the dialog only. */
 .fd-backdrop, .fd-panel, .fd-placeholder, .fd-popout-document { --surface: var(--th-bg-card); --surface-2: var(--th-bg-inset); --border: var(--th-border-strong); --text: var(--th-text); --focus: var(--th-status-info); --accent: var(--th-accent); --accent-soft: var(--th-bg-hover); --status-warn: var(--th-status-warning); --font-primary: var(--font-sans); --shadow-ink: color-mix(in srgb, var(--th-text-lt) 45%, transparent); }
 
+/* Numbered step badge next to panel headings. */
+.step-num { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-gradient); color: var(--on-accent); font: 700 var(--font-size-2xs) var(--font-mono);
+  margin-right: 8px; vertical-align: 2px; }
+/* Paired supporting panels share one row; stack when narrow. */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.duo > .panel { margin: 0; }
+/* Hops: 2-column grid under the verdict instead of a single-column accordion stack. */
+.hops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-top: 12px; }
+@media (max-width: 900px) { .duo, .hops-grid { grid-template-columns: 1fr; } }
 /* Transfer gate tab: one column, numbered top to bottom (pick, flow, token reel, result), the rest folded away. */
 .gate-flow { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
 .gate-step h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -110,3 +120,193 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .gate-more[open] > summary { margin-bottom: 10px; }
 .gate-more .gate { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
 .gate-more .panel { background: var(--th-bg-inset); }
+
+/* A call in flight (owner request 2026-11-19): the button that started it turns red and the
+   scenario chips for the running scenario follow. The primary action keeps the shared Ping Red
+   gradient (the UI standard); "running" holds the same red while the call is in flight.
+   Specificity (button.running, after the shared rules) replaces the shared primary colours
+   without forced overrides — this app forbids those. */
+button.running, button.primary.running { background: var(--accent-gradient); border-color: var(--primary-edge); color: var(--on-accent); font-weight: 700; }
+.seg button.running { box-shadow: inset 0 -3px 0 var(--th-accent); }
+
+/* ---- Modals (owner request 2026-11-19): readable, roomier, distinct ----
+   The action row gets its own tinted bar so Approve/Deny/Dismiss never sit on the
+   same white as body text; cards get real spacing between blocks. Tokens only. */
+.modal__card { display: grid; gap: 14px; padding: 4px 2px; font-size: var(--font-size-base); }
+.modal__card > p { margin: 0; line-height: 1.55; }
+.modal__actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 14px; background: var(--th-bg-inset); border: 1px solid var(--th-border); border-radius: var(--radius-md); }
+.modal__actions button:not(.link) { min-width: 108px; min-height: 38px; font-weight: 600; }
+.modal__card .muted { color: var(--th-text-muted); }
+
+/* ---- The mock phone (owner request 2026-11-19): the CIBA and PingID panels look like the
+   device they are supposed to be on. Chrome ported from AI-DEMO2's CibaApprovalPage phone
+   frame (320x600 dark rounded body, notch, home indicator, green approve). Tokens only. */
+.phone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(300px, 100%);
+  min-height: 540px;
+  margin: 4px auto;
+  padding: 40px 18px 30px;
+  background: var(--box-dark);
+  color: var(--on-box);
+  border-radius: 44px;
+  border: 3px solid var(--box-grey);
+  box-shadow: 0 24px 64px var(--shadow-ink);
+}
+/* Status bar: a phone shows the time; sells the device (AI-DEMO2 keeps chrome only). */
+.phone::before {
+  content: "9:41";
+  position: absolute;
+  top: 10px; left: 24px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--on-box);
+}
+/* The notch. */
+.phone::after {
+  content: "";
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  width: 84px; height: 18px;
+  background: var(--box-grey);
+  border-radius: 0 0 12px 12px;
+}
+.phone__msg { margin: 0; padding: 12px 14px; background: color-mix(in srgb, var(--box-blue) 30%, transparent); border: 1px solid var(--box-blue); border-radius: 14px; line-height: 1.5; font-size: var(--font-size-sm); }
+.phone .muted { color: var(--on-box); opacity: 0.75; font-size: var(--font-size-xs); }
+.phone .modal__actions { background: transparent; border: 0; padding: 0; margin-top: auto; }
+.phone .modal__actions button { flex: 1 1 100%; min-height: 46px; border-radius: 12px; border: 0; font-weight: 600; }
+/* The approve beat is green on the device (AI-DEMO2's FOOTER_BTN_APPROVE); deny/expire stay quiet. */
+.phone .modal__actions button.primary,
+.phone .modal__actions button[data-testid$="-approve"] { background: var(--th-ok); color: var(--on-accent); font-size: var(--font-size-base); }
+.phone .modal__actions button[data-testid$="-deny"],
+.phone .modal__actions button[data-testid$="-expire"] { background: color-mix(in srgb, var(--box-grey) 55%, transparent); color: var(--on-box); }
+.phone .modal__actions button[data-testid="pingid-deny"] { background: color-mix(in srgb, var(--th-deny) 70%, transparent); color: var(--th-deny-text); }
+.phone input { color: var(--th-text); border-radius: 12px; }
+.phone__app { margin: 0 0 4px; font-size: var(--font-size-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-box); opacity: 0.7; }
+
+/* PhoneDialog: the phone as its own floating window (draggable, resizable, pop-out via FloatingDialog).
+   The dialog body holds the iPhone chrome; the screen fills the panel below the title bar. */
+.phone-dialog .fd-body { display: flex; padding: 0; overflow: hidden; }
+.phone--window {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 40px 18px 24px;
+  border-radius: 36px;
+}
+.phone--window .modal__actions { flex-wrap: wrap; }
+
+/* PhoneDialog chrome: drop the app-window dressing and make the whole panel read as one iPhone.
+   The title bar becomes the phone's top bezel: drag and pop-out/close are the bezel's own controls. */
+.phone-dialog.fd-panel {
+  border: 0;
+  border-top: 0;
+  border-radius: 44px;
+  background: var(--box-dark);
+  color: var(--on-box);
+  box-shadow: 0 24px 64px var(--shadow-ink);
+  overflow: hidden;
+}
+.phone-dialog .fd-titlebar {
+  order: -1;
+  gap: 2px;
+  padding: 14px 14px 6px;
+  background: var(--box-dark);
+  border-bottom: 0;
+  border-radius: 0;
+}
+.phone-dialog .fd-title {
+  color: var(--on-box);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  justify-content: center;
+}
+.phone-dialog .fd-btn {
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--box-grey) 45%, transparent);
+  color: var(--on-box);
+  font-size: 13px;
+}
+.phone-dialog .fd-btn:hover { background: color-mix(in srgb, var(--box-grey) 70%, transparent); }
+.phone-dialog .fd-body { padding: 8px 16px 22px; overflow: hidden; }
+/* The notch rides on the bezel, under the title row. */
+.phone-dialog .phone--window { border: 0; border-radius: 0; background: transparent; padding-top: 6px; }
+.phone-dialog .phone--window::after { top: -34px; }
+.phone-dialog .phone--window::before { content: none; }
+
+/* PhoneDialog polish: status bar (time + battery feel) in the bezel, a visible notch, and legible
+   deny button on the dark frame. */
+.phone-dialog .phone--window::before {
+  content: "9:41";
+  position: absolute;
+  top: -32px;
+  left: 22px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--on-box);
+}
+.phone-dialog .phone--window::after {
+  top: -36px;
+  width: 90px;
+  height: 22px;
+  border-radius: 0 0 14px 14px;
+}
+.phone-dialog .phone--window { gap: 10px; }
+.phone-dialog .modal__actions button[data-testid="pingid-deny"] { background: var(--th-deny); color: var(--on-accent); }
+.phone-dialog .phone__msg { font-size: var(--font-size-base); }
+
+/* The bezel is the status bar: hide the window title text, let the notch and 9:41 carry the top
+   (drag still works anywhere on the titlebar; pop-out and close stay top-right, iOS-control sized). */
+.phone-dialog .fd-title { visibility: hidden; }
+.phone-dialog .fd-titlebar { padding: 10px 12px 2px; }
+.phone-dialog .fd-btn { min-width: 24px; min-height: 24px; font-size: 12px; opacity: 0.85; }
+.phone-dialog .phone--window::before { top: 12px; }
+.phone-dialog .phone--window::after { top: 8px; }
+.phone-dialog .phone--window { padding-top: 34px; }
+
+/* iPhone feel, pass 3: iOS status glyphs right of the time and a home indicator at the bottom.
+   Glyphs live on .phone-dialog .fd-body::before; the indicator on .phone-dialog .fd-body::after. */
+.phone-dialog .fd-body { position: relative; }
+.phone-dialog .fd-body::before {
+  content: "";
+  position: absolute;
+  top: -24px;
+  right: 18px;
+  width: 58px;
+  height: 10px;
+  background:
+    radial-gradient(circle 2px at 51px 5px, var(--on-box) 98%, transparent) ,
+    linear-gradient(to right, transparent 0 4px, var(--on-box) 4px 22px, transparent 22px 26px, var(--on-box) 26px 44px, transparent 44px 48px, var(--on-box) 48px 56px, transparent 56px);
+  -webkit-mask: none;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.phone-dialog .fd-body::after {
+  content: "";
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--on-box);
+  opacity: 0.5;
+  pointer-events: none;
+}

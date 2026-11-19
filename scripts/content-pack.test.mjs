@@ -17,7 +17,7 @@ test('the committed content-pack.json is exactly what the builder makes (no drif
 
 test('every scenario has a story and a try-it card that opens it', () => {
   const pack = buildPack();
-  assert.equal(pack.stories.length, 7);
+  assert.equal(pack.stories.length, 8);
   for (const s of pack.stories) {
     const card = pack.cards.find((c) => c.story === s.id);
     assert.ok(card, s.id);

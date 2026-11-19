@@ -52,7 +52,7 @@
     },
     {
       "id": "phone",
-      "label": "CIBA: out-of-band on the phone",
+      "label": "Out-of-band on the phone (CIBA or a PingID push)",
       "group": "human",
       "x": 600,
       "y": 400

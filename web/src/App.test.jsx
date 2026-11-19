@@ -10,6 +10,7 @@ const STORY = {
   tools: [{ name: "create_transfer", tier: "write", lesson: "l" }],
   scenarios: [
     { id: "consent-hitl", title: "HITL: $300 needs human consent", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 300 }, declaredStepUp: null, expected: "HITL", lesson: "Paused for consent." },
+    { id: "pingid-push", title: "PUSH: $150 approved with a PingID push on the phone", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 150 }, declaredStepUp: "pingid-push", expected: "STEP_UP", lesson: "A push goes to the phone." },
     { id: "privilege-pingid", title: "PRIVILEGE: $150 held for PingID approval", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 150 }, declaredStepUp: "privilege", expected: "STEP_UP", lesson: "Held by the Privilege gateway." },
     { id: "deny-ceiling", title: "DENY: $2500 exceeds the hard limit", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 2500 }, declaredStepUp: null, expected: "DENY", lesson: "Refused outright." },
   ],
@@ -94,7 +95,7 @@ function mockFetch() {
       const amt = Number(b.amount);
       // a retried call after a human beat is satisfied carries a receipt and permits — but ONLY
       // for the exact amount the human was shown; a retry at a different amount re-challenges.
-      if (override.approved && override.approvedFor === amt) return json({ decision: "PERMIT", reason: "receipt presented", tool: b.tool, amount: amt, receipt: "hitl-receipt-0001", receiptKind: "hitl", bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, 200);
+      if (override.approved && override.approvedFor === amt) return json({ decision: "PERMIT", reason: "receipt presented", tool: b.tool, amount: amt, receipt: override.approvedKind === "push" ? "push-receipt-0001" : "hitl-receipt-0001", receiptKind: override.approvedKind || "hitl", bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, 200);
       let decision = "PERMIT"; let status = 200; let reason = `amount ${amt} is below the confirm threshold`; let error; let detail; let step_up_method;
       if (b.step_up_method) { decision = "STEP_UP"; status = 428; reason = "sensitive agent-initiated action"; error = b.step_up_method === "ciba" ? "ciba_required" : "mcp_step_up_required"; step_up_method = b.step_up_method; }
       else if (amt > bands.denyCeilingUsd) { decision = "DENY"; status = 403; reason = `amount ${amt} exceeds the hard limit of ${bands.denyCeilingUsd}`; }
@@ -104,6 +105,13 @@ function mockFetch() {
       return json({ decision, reason, tool: b.tool, amount: amt, ...(error ? { error, detail: `${error}: the human beat is required`, ...(step_up_method ? { step_up_method } : {}), ...(challengeId ? { challengeId } : {}) } : { receipt: "hitl-receipt-0001", receiptKind: "hitl" }), bands, traceId: "a".repeat(32), hops: [hop(1), hop(2), hop(3)] }, status);
     }
     if (url === "/api/consent/respond") { const d = JSON.parse(opts.body).decision; if (d === "approved") { override.approved = true; override.approvedFor = 300; } return json({ challenge: { id: JSON.parse(opts.body).challengeId, status: d }, ...(d === "approved" ? { receipt: { id: "hitl-receipt-0001", amountBound: 300, kind: "hitl" } } : {}), workspace: "t" }); }
+    if (url === "/api/mfa/push") return json({ challenge: { id: "push-0001", method: "pingid-push", status: "pending", bindingMessage: "Approve $150 transfer", expiresInSeconds: 60 }, workspace: "t" });
+    if (url === "/api/mfa/push/push-0001/respond") { const d = JSON.parse(opts.body).decision; override.pushDecision = d; return json({ challenge: { id: "push-0001", status: d }, workspace: "t" }); }
+    if (url === "/api/mfa/poll/push-0001") {
+      if (override.pushDecision === "approved") { override.approved = true; override.approvedFor = 150; override.approvedKind = "push"; return json({ status: "verified", receipt: { id: "push-receipt-0001", ttlMs: 300000, kind: "push" } }); }
+      if (override.pushDecision === "denied") return json({ status: "denied" });
+      return json({ status: "pending" });
+    }
     if (url === "/api/mfa/challenge") return json({ challenge: { id: "mfa-1", method: "p1mfa", status: "pending", devices: [{ id: "dev-1", type: "OTP", label: "Demo device (OTP)" }] }, workspace: "t" });
     if (url === "/api/mfa/verify") {
       const b = JSON.parse(opts.body);
@@ -127,7 +135,14 @@ function mockFetch() {
 }
 beforeEach(() => { override = {}; mockFetch(); window.location.hash = ""; });
 
-const ready = async () => { render(<App />); await screen.findByText("HITL: $300 needs human consent"); await screen.findByTestId("verdict"); };
+// No auto-run (owner rule 2026-11-19: the page must not fire a prompt on load): the visitor's
+// first click on a scenario chip makes the agent call. `ready` performs that click.
+const ready = async () => {
+  render(<App />);
+  const chip = await screen.findByText("HITL: $300 needs human consent");
+  await userEvent.click(chip);
+  await screen.findByTestId("verdict");
+};
 
 describe("shell", () => {
   it("shows the Shelf button in the header, linking to the shelf URL from /api/shelf", async () => {
@@ -282,6 +297,46 @@ describe("flow and token reel on the transfer gate tab", () => {
   }, 15000);
 });
 
+describe("PingID push step-up (mock phone)", () => {
+  const start = async () => { await ready(); await userEvent.click(screen.getByText("PUSH: $150 approved with a PingID push on the phone")); return screen.findByTestId("push-modal"); };
+  it("the declared push opens the push dialog with the binding message, says it is a MOCK push, and the reel waits on the phone", async () => {
+    await start();
+    expect(screen.getByTestId("push-amount")).toHaveTextContent("$150");
+    expect(screen.getByTestId("push-modal")).toHaveTextContent(/mock/i);
+    await screen.findByTestId("push-phone");
+    expect(screen.getByTestId("push-modal")).toHaveTextContent("Approve $150 transfer");
+    expect(screen.getByTestId("flow-now")).toHaveTextContent(/PingID push went to the approver/);
+    expect(screen.getByTestId("reel-challenge")).toHaveTextContent("PingID push challenge");
+    expect(within(screen.getByTestId("reel-challenge")).getAllByText("push-0001").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("reel-receipt")).toHaveTextContent("PingID push credit");
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("not issued yet");
+  }, 15000);
+  it("Approve on the mock phone mints the credit, the call is retried once and the reel shows the push credit consumed", async () => {
+    await start();
+    await userEvent.click(await screen.findByTestId("push-approve"));
+    await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"), { timeout: 8000 });
+    expect(screen.queryByTestId("push-modal")).toBeNull();
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("consumed on retry");
+    expect(within(screen.getByTestId("reel-receipt")).getAllByText("push-receipt-0001").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("executed");
+  }, 20000);
+  it("\"No, it's not me\" leaves it held: nothing is issued and the flow says so", async () => {
+    await start();
+    await userEvent.click(await screen.findByTestId("push-deny"));
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent(/No, it's not me/), { timeout: 8000 });
+    expect(screen.queryByTestId("push-modal")).toBeNull();
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("none issued");
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("not executed");
+  }, 20000);
+  it("the ad-hoc call offers the pingid-push declared step-up too", async () => {
+    await ready();
+    await userEvent.click(screen.getByText(/Try your own call/));
+    await userEvent.selectOptions(screen.getByTestId("call-declared"), "pingid-push");
+    await userEvent.click(screen.getByTestId("call-run"));
+    await screen.findByTestId("push-modal");
+  }, 15000);
+});
+
 describe("Privilege hold confirmed with PingID", () => {
   const start = async () => { await ready(); await userEvent.click(screen.getByText("PRIVILEGE: $150 held for PingID approval")); return screen.findByTestId("privilege-modal"); };
   it("the held call opens the approver's HITL Requests; the reel shows the 403 and waits for PingID", async () => {
@@ -381,8 +436,9 @@ describe("Real mode (owner-run)", () => {
   it("the other scenarios stay simulated in Real mode", async () => {
     await realReady();
     await userEvent.click(screen.getByText("HITL: $300 needs human consent"));
+    // The click runs the scenario (mock flow) and the consent beat opens; the Real panel is gone.
+    await waitFor(() => expect(screen.queryByTestId("real-panel")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("consent-modal")).toBeInTheDocument());
-    expect(screen.queryByTestId("real-panel")).toBeNull();
   }, 15000);
 });
 
