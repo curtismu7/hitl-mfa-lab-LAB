@@ -434,6 +434,7 @@ describe("Real mode (owner-run)", () => {
     await realReady();
     await userEvent.click(await screen.findByTestId("real-push-send"));
     await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent(/Approved on the phone/), { timeout: 8000 });
+    expect(screen.getByTestId("real-push-result")).toHaveTextContent(/PingID answered: APPROVED.*PingOne reported COMPLETED at/);
     override.pushFail = true;
     await userEvent.click(await screen.findByTestId("real-push-send"));
     await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent("The push failed: device select refused (HTTP 400)"));
