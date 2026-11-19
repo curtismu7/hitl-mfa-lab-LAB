@@ -1,15 +1,44 @@
 // Deployment configuration: the MODE switch (rule 18) and the Mock/Real toggle (rule 19).
 // One image serves the local standalone and the hosted SE build.
-// Mock is the only fully-offline mode. Real (owner-run) is configured via the environment:
-// HMLAB_REAL_URL + HMLAB_REAL_CLIENT_ID + HMLAB_REAL_CLIENT_SECRET (owner-verified; agents never use live
-// credentials). This lab's Real mode is RESERVED: the toggle mechanics follow rule 19 (409 when unconfigured,
-// disabled tooltip), and a configured Real mode reports realAvailable — but this build has no live-gateway
-// data path yet, so Mock stays the story until a Real backend is wired in.
+// Mock is the only fully-offline mode. Real is OWNER-RUN: the lab sends one real MCP tools/call to the Privilege gateway door you
+// configure in its own .env (beside the compose file) and shows the real answer. Agents never use live credentials.
+//   HMLAB_REAL_URL        the door's MCP URL (https; http only on loopback). The ONLY address Real mode may reach.
+//   HMLAB_REAL_AGENT_KEY  a Privilege agent access key. Write-only: never returned, logged or put in a trace.
+//   HMLAB_REAL_TOOL       the tool the gateway's "Require human approval" policy holds
+//   HMLAB_REAL_ARGS       optional JSON object of that tool's arguments (default {})
 // When Real is not configured, POST /api/mode answers 409 and the toggle is disabled with a how-to tooltip.
+import { isLoopbackHost } from './safety.js';
+import { isPrivateAddress } from './netguard.js';
 
-// Which real configuration exists (never the values — only whether they are present).
+const TOOL_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+/** What the Real settings say. Never contains the key: only whether it is present. */
+export function realConfigFrom(env = process.env) {
+  const url = env.HMLAB_REAL_URL;
+  const tool = env.HMLAB_REAL_TOOL;
+  const any = Boolean(url || env.HMLAB_REAL_AGENT_KEY || tool);
+  // A hosted (shared SE) build never makes real calls: any visitor could trigger them. Real is for the owner's own local lab.
+  if (env.HMLAB_HOSTED === '1') return { ok: false, any, problem: 'Real mode is not available on a hosted build' };
+  if (!url || !env.HMLAB_REAL_AGENT_KEY || !tool) return { ok: false, any, problem: 'HMLAB_REAL_URL, HMLAB_REAL_AGENT_KEY and HMLAB_REAL_TOOL are all needed for Real mode' };
+  let u;
+  try { u = new URL(url); } catch { return { ok: false, any, problem: 'HMLAB_REAL_URL is not a valid URL' }; }
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && isLoopbackHost(u.hostname))) return { ok: false, any, problem: 'HMLAB_REAL_URL must be https (http is allowed on loopback only)' };
+  if (u.username || u.password) return { ok: false, any, problem: 'HMLAB_REAL_URL must not carry credentials' };
+  const privateOk = env.HMLAB_REAL_ALLOW_PRIVATE === '1';
+  const literal = /^\[?[0-9a-f:.]+\]?$/i.test(u.hostname) && (u.hostname.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(u.hostname));
+  if (literal && u.protocol === 'https:' && isPrivateAddress(u.hostname) && !privateOk) return { ok: false, any, problem: 'HMLAB_REAL_URL is a private or link-local address; set HMLAB_REAL_ALLOW_PRIVATE=1 only if your gateway really lives on a private network' };
+  if (!TOOL_RE.test(tool)) return { ok: false, any, problem: 'HMLAB_REAL_TOOL must be 1-64 letters, digits or _ . : -' };
+  let args = {};
+  if (env.HMLAB_REAL_ARGS) {
+    try { args = JSON.parse(String(env.HMLAB_REAL_ARGS).slice(0, 2001)); } catch { return { ok: false, any, problem: 'HMLAB_REAL_ARGS is not valid JSON' }; }
+    if (String(env.HMLAB_REAL_ARGS).length > 2000 || args === null || typeof args !== 'object' || Array.isArray(args)) return { ok: false, any, problem: 'HMLAB_REAL_ARGS must be a JSON object under 2000 characters' };
+  }
+  return { ok: true, any, url: u.toString(), host: u.hostname.toLowerCase(), origin: u.origin, tool, args, privateOk };
+}
+
+// Whether Real is configured (never the values).
 export function realAvailableFrom(env = process.env) {
-  return Boolean(env.HMLAB_REAL_URL && env.HMLAB_REAL_CLIENT_ID && env.HMLAB_REAL_CLIENT_SECRET);
+  return realConfigFrom(env).ok;
 }
 
 // The launch mode (rule 18). Default: Real if configured, else Mock.
@@ -21,5 +50,5 @@ export function modeFrom(env = process.env) {
   return m;
 }
 
-// HMLAB_HOSTED=1 marks the SE build: the banner says HOSTED SIMULATION. It changes wording only, never behaviour.
+// HMLAB_HOSTED=1 marks the SE build: the banner says HOSTED SIMULATION. It changes wording only, except that a hosted build never allows Real (see realConfigFrom).
 export const hostedFrom = (env = process.env) => env.HMLAB_HOSTED === '1';

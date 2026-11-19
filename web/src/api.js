@@ -26,8 +26,9 @@ export async function setMode(source) {
 
 // POST /api/transfer: one agent tool call through the transfer gate. 428 (a human beat is
 // required) and 403 (deny) are DATA here, not errors.
-export async function runTool(payload) {
-  const r = await workspaceFetch("/api/transfer", { method: "POST", body: JSON.stringify(payload) });
+export async function runTool(payload, { approvalId = null } = {}) {
+  // The retry of a call a Privilege gateway held carries the approval id in X-Procyon-Approval-Id.
+  const r = await workspaceFetch("/api/transfer", { method: "POST", body: JSON.stringify(payload), ...(approvalId ? { headers: { "X-Procyon-Approval-Id": approvalId } } : {}) });
   let body = {};
   try { body = await r.json(); } catch { /* not JSON */ }
   return { ok: r.ok, status: r.status, body };
@@ -65,3 +66,10 @@ async function postJson(url, payload) {
 }
 
 export const resetWorkspace = () => workspaceFetch("/api/reset", { method: "POST", body: "{}" }).then((r) => r.ok);
+
+// Real (owner-run): one real tools/call to the Privilege gateway configured in the lab's .env; approvalId makes it the retry. Structured JSON on every outcome.
+export const callRealPrivilege = (approvalId = null) => postJson("/api/privilege/real/call", approvalId ? { approvalId } : {});
+
+// The Privilege console's HITL Requests (mock): list what is held, and decide one. Approving needs a PingID confirmation.
+export const getPrivilegeQueue = () => getJson("/api/privilege/hitl");
+export const decidePrivilege = (id, payload) => postJson(`/api/privilege/hitl/${encodeURIComponent(id)}/decide`, payload);

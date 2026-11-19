@@ -133,8 +133,23 @@
       "story": "S04"
     },
     {
+      "id": "try-privilege-pingid",
+      "label": "Scenario 5: PRIVILEGE: $150 held for PingID approval",
+      "description": "An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs.",
+      "group": "try-it",
+      "action": {
+        "type": "route",
+        "href": "/#scenario-privilege-pingid"
+      },
+      "terms": [
+        "hitl",
+        "mfa"
+      ],
+      "story": "S05"
+    },
+    {
       "id": "try-receipt-replay",
-      "label": "Scenario 5: REPLAY: the same approved receipt cannot be used twice",
+      "label": "Scenario 6: REPLAY: the same approved receipt cannot be used twice",
       "description": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer.",
       "group": "try-it",
       "action": {
@@ -144,11 +159,11 @@
       "terms": [
         "receipts"
       ],
-      "story": "S05"
+      "story": "S06"
     },
     {
       "id": "try-receipt-amount-bound",
-      "label": "Scenario 6: BOUND: approving $300 does not authorize $600",
+      "label": "Scenario 7: BOUND: approving $300 does not authorize $600",
       "description": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA.",
       "group": "try-it",
       "action": {
@@ -158,7 +173,7 @@
       "terms": [
         "receipts"
       ],
-      "story": "S06"
+      "story": "S07"
     },
     {
       "id": "concept-editor",
@@ -204,11 +219,16 @@
     },
     {
       "id": "S05",
+      "title": "PRIVILEGE: $150 held for PingID approval",
+      "say": "An AI policy on the Privilege gateway holds this agent call (403 pending_approval) whatever the amount. The approver opens HITL Requests, approves, and PingID confirms them with a push or a passcode. The agent retries with the approval id inside 90 seconds and the transfer runs, once. Reject, or refuse the PingID prompt, and nothing runs."
+    },
+    {
+      "id": "S06",
       "title": "REPLAY: the same approved receipt cannot be used twice",
       "say": "An approved $300 consent receipt discharges the gate ONCE (consume-on-use). Retrying the same transfer after the credit is spent re-challenges — a stolen receipt cannot approve a second transfer."
     },
     {
-      "id": "S06",
+      "id": "S07",
       "title": "BOUND: approving $300 does not authorize $600",
       "say": "The receipt is amount-bound: a credit approved for $300 discharges only calls at or below $300. The $600 call ignores it and steps up to MFA."
     }

@@ -10,6 +10,7 @@ const STORY = {
   tools: [{ name: "create_transfer", tier: "write", lesson: "l" }],
   scenarios: [
     { id: "consent-hitl", title: "HITL: $300 needs human consent", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 300 }, declaredStepUp: null, expected: "HITL", lesson: "Paused for consent." },
+    { id: "privilege-pingid", title: "PRIVILEGE: $150 held for PingID approval", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 150 }, declaredStepUp: "privilege", expected: "STEP_UP", lesson: "Held by the Privilege gateway." },
     { id: "deny-ceiling", title: "DENY: $2500 exceeds the hard limit", bands: { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 }, call: { tool: "create_transfer", amount: 2500 }, declaredStepUp: null, expected: "DENY", lesson: "Refused outright." },
   ],
   facts: [
@@ -29,6 +30,8 @@ const DIAGRAM = {
 };
 const hop = (n) => ({ n, from: "agent", to: "policy", label: `hop ${n}`, traceparent: `00-${"a".repeat(32)}-${String(n).repeat(16)}-01`, request: `traceparent: 00-${"a".repeat(32)}-${String(n).repeat(16)}-01`, response: "HTTP/1.1 200 OK" });
 
+const realTrace = (status, body) => ({ source: "real", request: { method: "POST", url: "https://gw.example/door/mcp", headers: { authorization: "Bearer <token, 12 characters, kept on the server>" }, body: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "IndexMappingTool", arguments: {} } } },
+  response: status ? { status, headers: {}, body } : null, decisions: [{ id: "reach", label: "Reach the gateway", outcome: status ? "pass" : "fail", basis: "observed", evidence: status ? `HTTP ${status}` : "ECONNREFUSED" }], record: null });
 const DEFAULT_BANDS = { confirmUsd: 250, mfaUsd: 500, denyCeilingUsd: 2000 };
 const PINGID_STEPS = [
   { id: "policy-assigned", title: "Assign the MFA sign-on policy", why: "Out of the box it is assigned to nothing.", where: "PingOne admin console." },
@@ -58,8 +61,35 @@ function mockFetch() {
       override.bands = { ...DEFAULT_BANDS, ...(b.bands || b) };
       return json({ bands: override.bands, workspace: "t" });
     }
+    if (url === "/api/privilege/real" && (!opts.method || opts.method === "GET")) return json({ mode: "real", ok: true, host: "gw.example", tool: "IndexMappingTool", retryHeader: "X-Procyon-Approval-Id" });
+    if (url === "/api/privilege/real/call") {
+      const b = JSON.parse(opts.body || "{}");
+      if (override.realFail) return json({ error: "upstream_unreachable", message: "Could not reach the gateway: ECONNREFUSED", trace: realTrace(null, null) }, 502);
+      const executed = b.approvalId === "ins_real1";
+      return json(executed
+        ? { outcome: "executed", basis: "observed", http: 200, tool: "IndexMappingTool", approvalPresented: "ins_real1", summary: "ok", trace: realTrace(200, { jsonrpc: "2.0", id: 1, result: { content: [] } }) }
+        : { outcome: "held", basis: "observed", http: 403, tool: "IndexMappingTool", approvalPresented: b.approvalId || null, held: { instruction_id: "ins_real1", policy_ids: ["p:1"], reason: "r", retry_header: "X-Procyon-Approval-Id" }, trace: realTrace(403, { jsonrpc: "2.0", id: 1, error: { code: -32600, data: { status: "pending_approval" } } }) });
+    }
+    if (url === "/api/privilege/hitl") return json({ requests: [{ id: "ins_000001", tool: "create_transfer", amount: 150, status: override.privApproved ? "approved" : "pending" }], policy: { demoPasscode: "123123" }, workspace: "t" });
+    if (url === "/api/privilege/hitl/ins_000001/decide") {
+      const b = JSON.parse(opts.body);
+      if (b.decision === "reject") { override.privRejected = true; return json({ request: { id: "ins_000001", status: "rejected" } }); }
+      if (b.pingid?.method === "push" && b.pingid.result !== "approved") return json({ error: "pingid_denied", detail: "PingID: \"No, it's not me\" — nothing was approved" }, 403);
+      if (b.pingid?.method === "passcode" && b.pingid.code !== "123123") return json({ error: "bad_passcode", detail: "wrong PingID passcode" }, 401);
+      override.privApproved = true; override.privMethod = b.pingid.method;
+      return json({ request: { id: "ins_000001", status: "approved", method: b.pingid.method } });
+    }
     if (url === "/api/transfer") {
       const b = JSON.parse(opts.body);
+      const priv = (n) => ({ n, from: "policy", to: "approver", label: "HELD: queued", request: "r", response: "HTTP 403" });
+      if (b.step_up_method === "privilege") {
+        const presented = opts.headers && opts.headers["X-Procyon-Approval-Id"];
+        if (presented === "ins_000001" && override.privApproved) {
+          override.privApproved = false;
+          return json({ decision: "PERMIT", reason: "approval presented", tool: b.tool, amount: Number(b.amount), receipt: "ins_000001", receiptKind: "privilege", approval: { id: "ins_000001", method: override.privMethod, status: "used" }, bands: DEFAULT_BANDS, traceId: "a".repeat(32), hops: [hop(1), hop(2), priv(3), { n: 4, from: "approver", to: "pingid", label: "PingID confirms the approver", request: "r", response: "ok" }, { n: 5, from: "policy", to: "transfer", label: "Receipt presented", request: "r", response: "HTTP 200" }] });
+        }
+        return json({ decision: "STEP_UP", reason: "held", tool: b.tool, amount: Number(b.amount), error: "pending_approval", detail: "action requires human approval", step_up_method: "privilege", approval: { status: "pending_approval", instruction_id: "ins_000001", policy_ids: ["ai-transfer-hitl:1"], reason: "r", retry_header: "X-Procyon-Approval-Id", open_for_s: 120, retry_within_s: 90 }, bands: DEFAULT_BANDS, traceId: "a".repeat(32), hops: [hop(1), hop(2), priv(3)] }, 403);
+      }
       const bands = override.bands || DEFAULT_BANDS;
       const amt = Number(b.amount);
       // a retried call after a human beat is satisfied carries a receipt and permits — but ONLY
@@ -208,6 +238,151 @@ describe("transfer gate tab", () => {
     expect(within(d).getByTestId("fd-titlebar")).toHaveTextContent("CIBA: approval requested out-of-band");
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("ciba-modal")).toBeNull());
+  }, 15000);
+});
+
+describe("flow and token reel on the transfer gate tab", () => {
+  it("numbers the steps top to bottom (pick, flow, token reel, result) and folds the editors away", async () => {
+    await ready();
+    const order = ["step-pick", "step-flow", "step-reel", "step-result", "step-try", "step-evidence"].map((id) => screen.getByTestId(id));
+    order.slice(1).forEach((el, i) => expect(order[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
+    expect(screen.getByTestId("step-try").open).toBe(false);
+    expect(screen.getByTestId("step-evidence").open).toBe(false);
+  });
+  it("says where the run is, and the reel waits on the human while the consent dialog is open", async () => {
+    await ready();
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent("waiting for the human to consent"));
+    expect(screen.getByTestId("reel-challenge-state")).toHaveTextContent("waiting for the human");
+    expect(within(screen.getByTestId("reel-challenge")).getAllByText("consent-1").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("not issued yet");
+  });
+  it("after Approve the reel shows the receipt consumed and the transfer executed", async () => {
+    await ready();
+    await userEvent.click(await screen.findByTestId("consent-approve"));
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent("the transfer executed"));
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("consumed on retry");
+    expect(within(screen.getByTestId("reel-receipt")).getAllByText("hitl-receipt-0001").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("executed");
+  }, 15000);
+  it("the MFA beat puts the challenge id and the credit's TTL on the reel", async () => {
+    await ready();
+    await userEvent.click(screen.getByText(/Try your own call/));
+    await userEvent.selectOptions(screen.getByTestId("call-declared"), "p1mfa");
+    await userEvent.click(screen.getByTestId("call-run"));
+    await screen.findByTestId("mfa-modal");
+    await waitFor(() => expect(within(screen.getByTestId("reel-challenge")).getAllByText("mfa-1").length).toBeGreaterThan(0));
+    expect(within(screen.getByTestId("reel-receipt")).getAllByText("5 min").length).toBeGreaterThan(0);
+  }, 15000);
+  it("a DENY issues no credential", async () => {
+    await ready();
+    await userEvent.click(screen.getByText("DENY: $2500 exceeds the hard limit"));
+    await waitFor(() => expect(screen.getByTestId("reel-challenge-state")).toHaveTextContent("refused"));
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("not executed");
+    expect(screen.queryByTestId("reel-receipt")).toBeNull();
+  }, 15000);
+});
+
+describe("Privilege hold confirmed with PingID", () => {
+  const start = async () => { await ready(); await userEvent.click(screen.getByText("PRIVILEGE: $150 held for PingID approval")); return screen.findByTestId("privilege-modal"); };
+  it("the held call opens the approver's HITL Requests; the reel shows the 403 and waits for PingID", async () => {
+    await start();
+    expect(screen.getByTestId("privilege-queue")).toHaveTextContent("ins_000001");
+    expect(screen.getByTestId("flow-now")).toHaveTextContent(/Privilege gateway.*HITL Requests/);
+    expect(screen.getByTestId("reel-challenge-state")).toHaveTextContent("pending_approval");
+    expect(screen.getByTestId("reel-pingid-state")).toHaveTextContent("waiting for the approver");
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("not issued yet");
+  }, 15000);
+  it("Approve asks PingID; a push approval issues the approval, the agent retries with the header and the transfer executes", async () => {
+    await start();
+    await userEvent.click(screen.getByTestId("privilege-approve"));
+    expect(screen.getByTestId("pingid-phone")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("pingid-approve"));
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent("PingID confirmed the approver"));
+    expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED");
+    expect(screen.getByTestId("reel-pingid-state")).toHaveTextContent("approver confirmed");
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("used on retry");
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("executed");
+    const retry = calls.filter((c) => c.url === "/api/transfer").at(-1);
+    expect(retry.opts.headers["X-Procyon-Approval-Id"]).toBe("ins_000001");
+  }, 15000);
+  it('"No, it\'s not me" approves nothing: the request stays held and no retry is made', async () => {
+    await start();
+    const before = calls.filter((c) => c.url === "/api/transfer").length;
+    await userEvent.click(screen.getByTestId("privilege-approve"));
+    await userEvent.click(screen.getByTestId("pingid-deny"));
+    await waitFor(() => expect(screen.getByTestId("privilege-msg")).toHaveTextContent("nothing was approved"));
+    expect(screen.getByTestId("privilege-modal")).toBeInTheDocument();
+    expect(calls.filter((c) => c.url === "/api/transfer").length).toBe(before);
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("not issued yet");
+  }, 15000);
+  it("a wrong passcode is refused; the right one approves", async () => {
+    await start();
+    await userEvent.click(screen.getByTestId("privilege-approve"));
+    await userEvent.type(screen.getByTestId("pingid-code"), "000000");
+    await userEvent.click(screen.getByTestId("pingid-verify"));
+    await waitFor(() => expect(screen.getByTestId("privilege-msg")).toHaveTextContent("wrong PingID passcode"));
+    await userEvent.clear(screen.getByTestId("pingid-code"));
+    await userEvent.type(screen.getByTestId("pingid-code"), "123123");
+    await userEvent.click(screen.getByTestId("pingid-verify"));
+    await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"));
+    expect(screen.getByTestId("reel-pingid-state")).toHaveTextContent("approver confirmed");
+  }, 15000);
+  it("Reject needs no PingID and leaves nothing executed", async () => {
+    await start();
+    await userEvent.click(screen.getByTestId("privilege-reject"));
+    await waitFor(() => expect(screen.queryByTestId("privilege-modal")).toBeNull());
+    expect(screen.getByTestId("flow-now")).toHaveTextContent("rejected");
+    expect(screen.getByTestId("reel-pingid-state")).toHaveTextContent("not asked");
+    expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("not executed");
+  }, 15000);
+});
+
+describe("Real mode (owner-run)", () => {
+  const realReady = async () => { override.info = () => ({ ok: true, status: 200, json: async () => ({ mode: "real", simulated: true, hosted: false, realAvailable: true }) }); render(<App />); await screen.findByText("PRIVILEGE: $150 held for PingID approval"); await userEvent.click(screen.getByText("PRIVILEGE: $150 held for PingID approval")); return screen.findByTestId("real-panel"); };
+  it("says plainly what is real, shows the Real panel, and sends NOTHING to the mock gate or the real gateway until the owner presses the button", async () => {
+    await realReady();
+    expect(screen.getByTestId("banner")).toHaveTextContent(/REAL MODE.*PRIVILEGE scenario sends a real tools\/call/);
+    expect(screen.getByTestId("real-empty")).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/transfer" && JSON.parse(c.opts.body).step_up_method === "privilege")).toBe(false);
+    expect(calls.some((c) => c.url === "/api/privilege/real/call")).toBe(false);
+    expect(screen.queryByTestId("privilege-modal")).toBeNull();
+  }, 15000);
+  it("Send the real call: the held answer is drawn as OBSERVED in the flow, the reel and the shared trace panel; the approval id is prefilled", async () => {
+    await realReady();
+    await userEvent.click(screen.getByTestId("real-call"));
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent(/your Privilege gateway \(observed\)/));
+    expect(screen.getByTestId("reel-challenge-state")).toHaveTextContent("pending_approval (observed)");
+    expect(screen.getByTestId("real-approval").value).toBe("ins_real1");
+    expect(screen.getByText(/What Privilege did/i)).toBeInTheDocument();
+    expect(JSON.parse(calls.filter((c) => c.url === "/api/privilege/real/call")[0].opts.body)).toEqual({});
+  }, 15000);
+  it("after the owner approves in their console, the retry carries the id; PingID is shown as INFERRED, never as reported", async () => {
+    await realReady();
+    await userEvent.click(screen.getByTestId("real-call"));
+    await userEvent.click(await screen.findByTestId("real-retry"));
+    await waitFor(() => expect(screen.getByTestId("flow-now")).toHaveTextContent(/lab can only infer/));
+    expect(JSON.parse(calls.filter((c) => c.url === "/api/privilege/real/call").at(-1).opts.body)).toEqual({ approvalId: "ins_real1" });
+    expect(screen.getByTestId("reel-pingid-state")).toHaveTextContent("approver confirmed (inferred)");
+    expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("used on retry");
+  }, 15000);
+  it("an unreachable gateway is a named message in the page and a failure trace, not a blank or a crash", async () => {
+    await realReady();
+    override.realFail = true;
+    await userEvent.click(screen.getByTestId("real-call"));
+    await waitFor(() => expect(screen.getByTestId("real-msg")).toHaveTextContent("Could not reach the gateway"));
+    expect(screen.getByTestId("banner")).toBeInTheDocument();
+  }, 15000);
+  it("the mock Try-your-own-call is not offered on the Real scenario, so a mock id can never reach the real gateway", async () => {
+    await realReady();
+    await userEvent.click(screen.getByText(/Try your own call/));
+    expect(screen.getByTestId("try-disabled")).toBeInTheDocument();
+    expect(screen.queryByTestId("call-run")).toBeNull();
+  }, 15000);
+  it("the other scenarios stay simulated in Real mode", async () => {
+    await realReady();
+    await userEvent.click(screen.getByText("HITL: $300 needs human consent"));
+    await waitFor(() => expect(screen.getByTestId("consent-modal")).toBeInTheDocument());
+    expect(screen.queryByTestId("real-panel")).toBeNull();
   }, 15000);
 });
 

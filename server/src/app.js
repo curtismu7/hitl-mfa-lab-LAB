@@ -10,7 +10,9 @@ import { hostCheck, sameOriginWrites } from './safety.js';
 import { createHealth } from './health.js';
 import { mountShelfRoute } from './shelfLink.js';
 import { loadCast, verticalFrom, VERTICALS } from './cast.js';
-import { hostedFrom, modeFrom, realAvailableFrom } from './config.js';
+import { hostedFrom, modeFrom, realAvailableFrom, realConfigFrom } from './config.js';
+import { allowHost, clearAllowedHosts } from './netguard.js';
+import { RealError, createPrivilegeReal } from './privilegeReal.js';
 import { buildStory } from './story.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 import {
@@ -18,6 +20,7 @@ import {
   evaluateAmountPolicy, normalizeBands, LIMITS,
 } from './policy.js';
 import { buildHops, newTrace } from './trace.js';
+import { PRIVILEGE, PrivilegeError } from './privilege.js';
 import { WIZARD_STEPS, isWizardComplete } from './pingid.js';
 import { createWorkspaces, workspaceFrom } from './workspaces.js';
 
@@ -43,22 +46,51 @@ export function createApp({
   api.use(express.json({ limit: '8kb' }));
   api.use('/health', health.router);
   mountShelfRoute(api, { env });
+  // Rule 19: the mode is runtime server state. Real (owner-run) is the only thing that may leave the machine, and only to the one configured gateway:
+  // choosing Real opens the netguard allowlist for that host, choosing Mock (or starting in Mock) closes it again.
+  const real = createPrivilegeReal({ env });
+  let source;
+  try { source = modeFrom(env); } catch { source = 'mock'; } // the doctor already reports a bad MODE
+  const applyMode = (next) => {
+    source = next;
+    clearAllowedHosts();
+    const c = realConfigFrom(env);
+    if (next === 'real' && c.ok) allowHost(c.host, { privateOk: c.privateOk });
+  };
+  applyMode(source);
   const castFor = (req) => loadCast(configFile, verticalFrom(req.query.vertical));
   // customer.config.json is read on every request so editing it shows up on reload.
   api.get('/scenarios', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ ...buildStory(castFor(req), { hosted }), verticals: Object.keys(VERTICALS), hosted }); });
   api.get('/diagram', (req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
   // What this build is, for the banner and for verifying a deploy by content (not by a 200).
-  api.get('/info', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: modeFrom(), source: modeFrom(), simulated: true, hosted, realAvailable: realAvailableFrom(), version: (() => { try { return JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version || null; } catch { return null; } })() }); });
+  api.get('/info', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: source, source, simulated: true, hosted, realAvailable: realAvailableFrom(env), version: (() => { try { return JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version || null; } catch { return null; } })() }); });
   // Rule 19: the Mock/Real toggle. Exactly { source: "mock"|"real" }; 409 when Real is not configured.
   api.post('/mode', (req, res) => {
     const body = req.body;
     if (!body || typeof body !== 'object' || Array.isArray(body) || !['mock', 'real'].includes(body.source)) {
       return res.status(400).json({ error: 'bad_source', detail: 'body must be exactly { source: "mock" | "real" }' });
     }
-    if (body.source === 'real' && !realAvailableFrom()) {
-      return res.status(409).json({ error: 'real_not_configured', detail: 'Real mode needs a live policy engine configuration (HMLAB_REAL_* env, owner-run). Mock keeps working.' });
+    if (body.source === 'real' && !realAvailableFrom(env)) {
+      return res.status(409).json({ error: 'real_not_configured', detail: `Real mode needs the Privilege gateway settings in this lab's .env (HMLAB_REAL_URL, HMLAB_REAL_AGENT_KEY, HMLAB_REAL_TOOL; owner-run). ${realConfigFrom(env).problem}. Mock keeps working.` });
     }
-    return res.json({ source: body.source });
+    applyMode(body.source);
+    return res.json({ source });
+  });
+
+  // Real (owner-run): one real MCP tools/call to the configured Privilege gateway door, and its real answer. The approver decides in the real
+  // console with PingID; the retry sends the approval id. Only while the mode is Real; the key is never in any answer.
+  api.get('/privilege/real', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: source, retryHeader: PRIVILEGE.header, ...real.configView() }); });
+  api.post('/privilege/real/call', async (req, res) => {
+    if (source !== 'real') return res.status(409).json({ error: 'not_real_mode', message: 'Switch the header toggle to Real first: this call goes to a real gateway.' });
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request', message: 'body must be a JSON object' });
+    try {
+      const approvalId = body.approvalId === undefined || body.approvalId === null || body.approvalId === '' ? null : body.approvalId;
+      return res.json(await real.call({ approvalId }));
+    } catch (e) {
+      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, message: e.message, ...(e.trace ? { trace: e.trace } : {}) });
+      throw e;
+    }
   });
 
   const withWorkspace = (handler) => (req, res) => {
@@ -96,7 +128,9 @@ export function createApp({
     const amount = Number(body.amount);
     if (!Number.isFinite(amount) || amount < 0 || amount > LIMITS.amount) return res.status(400).json({ error: 'bad_amount', detail: 'amount must be a non-negative number within range' });
     const tool = typeof body.tool === 'string' && body.tool ? body.tool.slice(0, 64) : 'create_transfer';
-    const declaredStepUp = body.step_up_method === 'ciba' || body.step_up_method === 'p1mfa' ? body.step_up_method : null;
+    const declaredStepUp = body.step_up_method === 'ciba' || body.step_up_method === 'p1mfa' || body.step_up_method === 'privilege' ? body.step_up_method : null;
+    // The retry of a held Privilege call carries the approval id in X-Procyon-Approval-Id (body.approval_id also works for scripts).
+    const presentedApproval = typeof req.headers[PRIVILEGE.header.toLowerCase()] === 'string' ? req.headers[PRIVILEGE.header.toLowerCase()].slice(0, 64) : (typeof body.approval_id === 'string' ? body.approval_id.slice(0, 64) : null);
     const v = workspaces.state(ws);
     const bands = v.bands || DEFAULT_BANDS;
 
@@ -106,9 +140,29 @@ export function createApp({
 
     let receipt = null;
     let block = null;
+    let held = null;     // Privilege: the request this call just opened
+    let approved = null; // Privilege: the approval this call presented
     let decision = result.decision;
     if (result.decision === 'PERMIT' || result.decision === 'DENY') {
       // No receipt needed (or none can help).
+    } else if (flags.stepUpRequired && declaredStepUp === 'privilege') {
+      // A Privilege AI-gateway hold: 403 pending_approval until an approver decides (PingID-confirmed) and the retry presents the id.
+      const chk = v.privilege.check(presentedApproval, { tool, amount });
+      if (chk.ok && v.privilege.consume(presentedApproval)) {
+        receipt = presentedApproval;
+        approved = chk.approval;
+        decision = 'PERMIT';
+      } else {
+        held = v.privilege.hold({ tool, amount });
+        block = {
+          status: 403, error: 'pending_approval', detail: 'action requires human approval', step_up_method: 'privilege',
+          approval: {
+            status: 'pending_approval', instruction_id: held.id, policy_ids: [PRIVILEGE.policyId], reason: PRIVILEGE.reason,
+            retry_header: PRIVILEGE.header, expires_at: held.expiresAt, open_for_s: PRIVILEGE.openMs / 1000, retry_within_s: PRIVILEGE.retryMs / 1000,
+            ...(presentedApproval ? { rejected_approval: { id: presentedApproval, reason: chk.reason } } : {}),
+          },
+        };
+      }
     } else if (flags.stepUpRequired) {
       const kind = declaredStepUp === 'ciba' ? 'ciba' : 'stepUp';
       // A CIBA approval IS a human-in-the-loop event: the approval receipt (kind 'hitl', minted by
@@ -148,18 +202,20 @@ export function createApp({
 
     workspaces.record(ws, { tool, amount, decision, reason: result.reason, receipt, blocked: block ? block.error : null });
     const trace = newTrace(req.headers.traceparent);
-    const hops = buildHops({ trace, cast: castFor(req), decision, obligation, reason: result.reason, tool, amount, step_up_method: declaredStepUp || obligation?.step_up_method, receipt, ciba: null });
+    const privilege = declaredStepUp === 'privilege' ? { held, approval: approved, header: PRIVILEGE.header, policyId: PRIVILEGE.policyId, reason: PRIVILEGE.reason } : null;
+    const hops = buildHops({ trace, cast: castFor(req), decision, obligation, reason: result.reason, tool, amount, step_up_method: declaredStepUp || obligation?.step_up_method, receipt, ciba: null, privilege });
     res.set('traceparent', hops[0].traceparent);
     if (block) {
       return res.status(block.status).json({
         decision, reason: result.reason, tool, amount,
-        error: block.error, detail: block.detail, ...(block.step_up_method ? { step_up_method: block.step_up_method } : {}), ...(block.challengeId ? { challengeId: block.challengeId } : {}),
+        error: block.error, detail: block.detail, ...(block.step_up_method ? { step_up_method: block.step_up_method } : {}), ...(block.challengeId ? { challengeId: block.challengeId } : {}), ...(block.approval ? { approval: block.approval } : {}),
         bands, workspace: ws, traceId: trace.traceId, hops,
       });
     }
     return res.status(decision === 'DENY' ? 403 : 200).json({
       decision, reason: result.reason, tool, amount,
-      ...(receipt ? { receipt, receiptKind: declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl' } : {}),
+      ...(receipt ? { receipt, receiptKind: declaredStepUp === 'privilege' ? 'privilege' : declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl' } : {}),
+      ...(approved ? { approval: { id: approved.id, method: approved.method, status: 'used' } } : {}),
       bands, workspace: ws, traceId: trace.traceId, hops,
     });
   }));
@@ -282,6 +338,25 @@ export function createApp({
       return res.status(409).json({ error: 'not_pending', status: known.status });
     }
     return res.json({ status: 'expired', workspace: ws });
+  }));
+
+  // The Privilege console's "HITL Requests" queue (mock): what the gateway is holding, and the approver's decision. Approving needs
+  // a PingID confirmation (push or passcode); rejecting does not. A decided request cannot be changed.
+  api.get('/privilege/hitl', withWorkspace((ws, _req, res) => {
+    const v = workspaces.state(ws);
+    res.json({ requests: v.privilege.list(), policy: { id: PRIVILEGE.policyId, reason: PRIVILEGE.reason, retryHeader: PRIVILEGE.header, openForSeconds: PRIVILEGE.openMs / 1000, retryWithinSeconds: PRIVILEGE.retryMs / 1000, demoPasscode: PRIVILEGE.demoPasscode }, workspace: ws });
+  }));
+  api.post('/privilege/hitl/:id/decide', withWorkspace((ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
+    const v = workspaces.state(ws);
+    try {
+      const request = v.privilege.decide(String(req.params.id).slice(0, 64), { decision: body.decision, pingid: body.pingid && typeof body.pingid === 'object' && !Array.isArray(body.pingid) ? body.pingid : null });
+      return res.json({ request, workspace: ws });
+    } catch (e) {
+      if (e instanceof PrivilegeError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      throw e;
+    }
   }));
 
   api.get('/runs', withWorkspace((ws, _req, res) => res.json(workspaces.runs(ws))));

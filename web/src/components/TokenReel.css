@@ -1,0 +1,20 @@
+/* One row of cards when there is room, wrapping (never scrolling) when there is not. The chevron between cards says "then". */
+.reel { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); align-items: start; }
+.reel__card { position: relative; border: 1px solid var(--th-border); border-top: 4px solid var(--th-border-strong); border-radius: var(--radius-lg); background: var(--th-bg-card); padding: 10px 12px; min-width: 0; }
+.reel__card + .reel__card::before { content: "\203A"; position: absolute; left: -11px; top: 14px; width: 10px; text-align: center; font-weight: 700; color: var(--th-text-muted); }
+.reel__card--done { border-top-color: var(--th-ok); }
+.reel__card--now { border-top-color: var(--th-status-warning); box-shadow: 0 0 0 2px var(--th-status-warning); }
+.reel__card--next { border-style: dashed; border-top-style: solid; opacity: 0.8; }
+.reel__card--blocked { border-top-color: var(--th-deny); }
+.reel__head { display: flex; align-items: center; gap: 8px; }
+.reel__head h3 { margin: 0; flex: 1 1 auto; font-size: var(--font-size-base); }
+.reel__n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--th-bg-inset); border: 1px solid var(--th-border-strong); font: 700 var(--font-size-2xs) var(--font-mono); }
+.tag--mock { color: var(--th-status-warning-text); background: var(--th-status-warning-bg); border-color: var(--th-status-warning); }
+.tag--real { color: var(--th-accent); border-color: var(--th-accent); }
+.tag--deny { color: var(--th-deny-text); background: var(--th-deny-bg); border-color: var(--th-deny); }
+.reel__fields { margin: 6px 0 0; display: grid; gap: 4px; font-size: var(--font-size-sm); }
+.reel__fields > div { display: grid; grid-template-columns: max-content 1fr; gap: 0 10px; }
+.reel__fields dt { color: var(--th-text-muted); font-weight: 600; }
+.reel__fields dd { margin: 0; font-family: var(--font-mono); font-size: var(--font-size-2xs); overflow-wrap: anywhere; align-self: center; }
+.reel__note { margin: 8px 0 0; }
+@media (max-width: 600px) { .reel__card + .reel__card::before { display: none; } }
