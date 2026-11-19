@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Json from "./Json";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
-import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, respondConsent } from "../api";
+import { runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent } from "../api";
 import { visible } from "../safeText";
 
 const STATUS_CLASS = { measured: "tag tag--ok", inferred: "tag", UNVERIFIED: "tag tag--warn" };
@@ -230,7 +230,8 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
     if (decided) return;
     setMsg(null);
     setDecided(true);
-    const r = await respondCiba({ authReqId, decision }).catch(() => ({ ok: false, body: {} }));
+    // "expired" is the demo knob (no waiting for the TTL): retire the pending request now.
+    const r = await (decision === "expired" ? expireCiba(authReqId) : respondCiba({ authReqId, decision })).catch(() => ({ ok: false, body: {} }));
     if (!r.ok) { setDecided(false); setMsg(r.body.detail || "Could not deliver the decision."); }
     // The agent's next poll picks it up; the modal stays until then.
   };
@@ -246,6 +247,7 @@ function CibaModal({ open, amount, onApproved, onDenied, onClose }) {
             <div className="modal__actions">
               <button type="button" data-testid="ciba-approve" disabled={decided} onClick={() => decide("approved")}>Approve on this device</button>
               <button type="button" data-testid="ciba-deny" disabled={decided} onClick={() => decide("denied")}>Deny</button>
+              <button type="button" data-testid="ciba-expire" disabled={decided} onClick={() => decide("expired")}>Let it expire</button>
             </div>
           </div>
         ) : <p className="muted">{msg || "Requesting approval (bc-authorize)..."}</p>}

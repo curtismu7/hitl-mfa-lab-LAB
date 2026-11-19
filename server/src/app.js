@@ -241,6 +241,20 @@ export function createApp({
     const v = workspaces.state(ws);
     res.json({ pending: v.ciba.all().filter((r) => r.status === 'pending'), workspace: ws });
   }));
+  // Demo knob: let a pending CIBA request expire now instead of waiting out the TTL. Same end
+  // state the clock produces: the next poll reports expired and the agent's call stays paused.
+  api.post('/ciba/expire', withWorkspace((ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
+    if (typeof body.authReqId !== 'string' || !body.authReqId) return res.status(400).json({ error: 'auth_req_id_required' });
+    const v = workspaces.state(ws);
+    if (!v.ciba.expire(body.authReqId)) {
+      const known = v.ciba.get(body.authReqId);
+      if (!known) return res.status(404).json({ error: 'not_found', status: 'unknown' });
+      return res.status(409).json({ error: 'not_pending', status: known.status });
+    }
+    return res.json({ status: 'expired', workspace: ws });
+  }));
 
   api.get('/runs', withWorkspace((ws, _req, res) => res.json(workspaces.runs(ws))));
   // Reset clears this workspace's bands (back to defaults), receipts, challenges and runs.
