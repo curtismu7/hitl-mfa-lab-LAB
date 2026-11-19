@@ -8,6 +8,8 @@
 //   POST {auth}/deviceAuthentications/{id}  device.select+json { device:{id}, compatibility:"FULL" } -> PUSH_CONFIRMATION_REQUIRED (the push fires here)
 //   GET  {auth}/deviceAuthentications/{id}              -> COMPLETED | PUSH_CONFIRMATION_TIMED_OUT | FAILED | DENIED
 const TIMEOUT_MS = 10_000;
+// The PingID app pairs as PINGID_MOBILE; the PingOne MFA SDK app as MOBILE. Both receive a push.
+const PUSH_DEVICE_TYPES = new Set(['MOBILE', 'PINGID_MOBILE']);
 const API_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 export const pingidPushConfigFrom = (env = process.env) => {
@@ -65,8 +67,8 @@ export async function resolveUserDevice(cfg, rawFetch) {
   if (users.length > 1) throw new PingidError('pingid_user_ambiguous', `HMLAB_PINGONE_USERNAME matched ${users.length} users; refine it`, 409);
   const user = users[0];
   const devices = (await getJson(`${cfg.apiBase}/users/${user.id}/devices`, token, fetchImpl))._embedded?.devices ?? [];
-  const active = devices.filter((d) => d.type === 'MOBILE' && d.status === 'ACTIVE' && d.pushEnabled !== false);
-  if (!active.length) throw new PingidError('pingid_not_enrolled', `the user has no ACTIVE MOBILE (PingID app) device — walk the lab's PingID setup wizard first`, 409);
+  const active = devices.filter((d) => PUSH_DEVICE_TYPES.has(d.type) && d.status === 'ACTIVE' && d.pushEnabled !== false);
+  if (!active.length) throw new PingidError('pingid_not_enrolled', `the user has no ACTIVE PingID app device (type MOBILE or PINGID_MOBILE) — walk the lab's PingID setup wizard first`, 409);
   return { user, device: active[0] };
 }
 

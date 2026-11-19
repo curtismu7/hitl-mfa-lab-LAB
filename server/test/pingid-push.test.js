@@ -86,3 +86,9 @@ test('a network failure is a PingidError, never a bare TypeError that would cras
   await assert.rejects(sendPush({ env, fetchImpl: boom }), (e) => e instanceof PingidError && e.code === 'pingid_unreachable' && /UND_ERR_CONNECT_TIMEOUT/.test(e.message));
   await assert.rejects(pollPush({ env, daId: 'da1', fetchImpl: boom }), (e) => e instanceof PingidError && e.code === 'pingid_unreachable');
 });
+
+test('resolveUserDevice accepts the PINGID_MOBILE device type the PingID app pairs as', async () => {
+  const calls = [okToken, () => jsonRes({ _embedded: { users: [{ id: 'u1' }] } }), () => jsonRes({ _embedded: { devices: [{ id: 'p1', status: 'ACTIVE', type: 'PINGID_MOBILE', pushEnabled: true }] } })];
+  const { device } = await resolveUserDevice(pingidPushConfigFrom(env), fakeFetch(calls));
+  assert.equal(device.id, 'p1');
+});
