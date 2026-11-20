@@ -99,3 +99,14 @@ test('the netguard allowlist follows the toggle: the one configured host while R
     await withServer(async () => { assert.deepEqual(allowedHostList(), [], 'MODE=mock keeps it closed even when Real is configured'); }, { env: { ...env, MODE: 'mock' } });
   } finally { g.restore(); }
 });
+
+test('the lab no longer fires its own PingID push: the old direct-push routes are gone, so the push only ever comes from Privilege', async () => {
+  const d = await door();
+  try {
+    await withServer(async (url) => {
+      assert.equal((await fetch(`${url}/api/privilege/real/pingid`)).status, 404);
+      assert.equal((await J(`${url}/api/privilege/real/pingid/push`, {})).status, 404);
+      assert.equal((await J(`${url}/api/privilege/real/pingid/poll`, { daId: 'x' })).status, 404);
+    }, { env: realEnv(d.port) });
+  } finally { await d.close(); }
+});

@@ -13,7 +13,6 @@ import { loadCast, verticalFrom, VERTICALS } from './cast.js';
 import { hostedFrom, modeFrom, realAvailableFrom, realConfigFrom } from './config.js';
 import { allowHost, clearAllowedHosts } from './netguard.js';
 import { RealError, createPrivilegeReal } from './privilegeReal.js';
-import { PingidError, pingidPushConfigFrom, sendPush, pollPush } from './pingidPush.js';
 import { buildStory } from './story.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 import {
@@ -51,7 +50,6 @@ export function createApp({
   // Rule 19: the mode is runtime server state. Real (owner-run) is the only thing that may leave the machine, and only to the one configured gateway:
   // choosing Real opens the netguard allowlist for that host, choosing Mock (or starting in Mock) closes it again.
   const real = createPrivilegeReal({ env });
-  const pingidPushCfg = () => pingidPushConfigFrom(env);
   let source;
   try { source = modeFrom(env); } catch { source = 'mock'; } // the doctor already reports a bad MODE
   const applyMode = (next) => {
@@ -59,8 +57,6 @@ export function createApp({
     clearAllowedHosts();
     const c = realConfigFrom(env);
     if (next === 'real' && c.ok) allowHost(c.host, { privateOk: c.privateOk });
-    // The real PingID push needs PingOne's auth + api hosts while Real is on (owner-run).
-    if (next === 'real') { const p = pingidPushCfg(); if (p.ok) for (const h of p.hosts) allowHost(h); }
   };
   applyMode(source);
   const castFor = (req) => loadCast(configFile, verticalFrom(req.query.vertical));
@@ -95,33 +91,6 @@ export function createApp({
     } catch (e) {
       if (e instanceof RealError) return res.status(e.status).json({ error: e.code, message: e.message, ...(e.trace ? { trace: e.trace } : {}) });
       throw e;
-    }
-  });
-
-  // Real PingID push: fire a real push to the approver's enrolled PingID app and poll it (owner-run, Real mode only).
-  api.get('/privilege/real/pingid', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: source, ...(({ ok, problem }) => (ok ? { available: true } : { available: false, problem }))(pingidPushCfg()) }); });
-  api.post('/privilege/real/pingid/push', async (req, res) => {
-    if (source !== 'real') return res.status(409).json({ error: 'not_real_mode', message: 'Switch the header toggle to Real first: this sends a real push to a real phone.' });
-    const body = req.body;
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request', message: 'body must be a JSON object' });
-    const bindingMessage = typeof body.bindingMessage === 'string' && body.bindingMessage.length <= 140 ? body.bindingMessage : 'Approve this Privilege hold';
-    try {
-      const { daId } = await sendPush({ bindingMessage, env });
-      res.json({ sent: true, daId, bindingMessage });
-    } catch (e) {
-      if (e instanceof PingidError) return res.status(e.status).json({ error: e.code, message: e.message });
-      return res.status(500).json({ error: 'pingid_internal', message: 'the PingID push failed unexpectedly' });
-    }
-  });
-  api.post('/privilege/real/pingid/poll', async (req, res) => {
-    if (source !== 'real') return res.status(409).json({ error: 'not_real_mode', message: 'Real mode is off.' });
-    const body = req.body;
-    const daId = typeof body?.daId === 'string' ? body.daId : '';
-    try {
-      res.json(await pollPush({ daId, env }));
-    } catch (e) {
-      if (e instanceof PingidError) return res.status(e.status).json({ error: e.code, message: e.message });
-      return res.status(500).json({ error: 'pingid_internal', message: 'the PingID push failed unexpectedly' });
     }
   });
 

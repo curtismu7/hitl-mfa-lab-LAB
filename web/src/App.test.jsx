@@ -63,13 +63,10 @@ function mockFetch() {
       return json({ bands: override.bands, workspace: "t" });
     }
     if (url === "/api/privilege/real" && (!opts.method || opts.method === "GET")) return json({ mode: "real", ok: true, host: "gw.example", tool: "IndexMappingTool", retryHeader: "X-Procyon-Approval-Id" });
-    if (url === "/api/privilege/real/pingid") return json({ mode: "real", available: true });
-    if (url === "/api/privilege/real/pingid/push") return override.pushFail ? json({ error: "pingid_select_refused", message: "device select refused (HTTP 400)" }, 502) : json({ sent: true, daId: "da1" });
-    if (url === "/api/privilege/real/pingid/poll") return json({ status: "approved", upstream: "COMPLETED" });
     if (url === "/api/privilege/real/call") {
       const b = JSON.parse(opts.body || "{}");
       if (override.realFail) return json({ error: "upstream_unreachable", message: "Could not reach the gateway: ECONNREFUSED", trace: realTrace(null, null) }, 502);
-      const executed = b.approvalId === "ins_real1";
+      const executed = b.approvalId === "ins_real1" && !override.stillHeld;
       return json(executed
         ? { outcome: "executed", basis: "observed", http: 200, tool: "IndexMappingTool", approvalPresented: "ins_real1", summary: "ok", trace: realTrace(200, { jsonrpc: "2.0", id: 1, result: { content: [] } }) }
         : { outcome: "held", basis: "observed", http: 403, tool: "IndexMappingTool", approvalPresented: b.approvalId || null, held: { instruction_id: "ins_real1", policy_ids: ["p:1"], reason: "r", retry_header: "X-Procyon-Approval-Id" }, trace: realTrace(403, { jsonrpc: "2.0", id: 1, error: { code: -32600, data: { status: "pending_approval" } } }) });
@@ -430,21 +427,36 @@ describe("Real mode (owner-run)", () => {
     await waitFor(() => expect(screen.getByTestId("real-msg")).toHaveTextContent("Could not reach the gateway"));
     expect(screen.getByTestId("banner")).toBeInTheDocument();
   }, 15000);
-  it("the Real panel tells the owner how PingID goes through Privilege and labels the lab's own push as direct", async () => {
+  it("the Real panel says PingID goes through Privilege, and the lab offers no PingID push of its own", async () => {
     await realReady();
     expect(screen.getByTestId("real-checklist")).toHaveTextContent(/MFA is Enabled/);
     expect(screen.getByTestId("real-checklist")).toHaveTextContent(/Require human approval/);
-    expect(screen.getByText(/direct push from this lab \(not Privilege\)/)).toBeInTheDocument();
+    expect(screen.getByTestId("real-checklist")).toHaveTextContent(/the hold itself sends them the push/);
+    expect(screen.queryByText(/direct push from this lab/)).toBeNull();
+    expect(screen.queryByTestId("real-pingid-phone")).toBeNull();
+    expect(screen.queryByTestId("real-push-send")).toBeNull();
+    expect(calls.some((c) => c.url.startsWith("/api/privilege/real/pingid"))).toBe(false);
   }, 15000);
-  it("a real PingID push the phone approved shows Approved, and a refused push shows the server's reason", async () => {
+  it("after the hold the lab retries by itself with the instruction id (no button), and shows the run once Privilege's approval lets it through", async () => {
     await realReady();
-    await userEvent.click(await screen.findByTestId("real-push-send"));
-    await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent(/Approved on the phone/), { timeout: 8000 });
-    expect(screen.getByTestId("real-push-result")).toHaveTextContent(/PingID answered: APPROVED.*PingOne reported COMPLETED at/);
-    override.pushFail = true;
-    await userEvent.click(await screen.findByTestId("real-push-send"));
-    await waitFor(() => expect(screen.getByTestId("real-pingid-phone")).toHaveTextContent("The push failed: device select refused (HTTP 400)"));
+    await userEvent.click(screen.getByTestId("real-call"));
+    expect(await screen.findByTestId("real-waiting")).toHaveTextContent(/Privilege has sent the PingID push to the approvers/);
+    await waitFor(() => expect(screen.getByTestId("reel-receipt-state")).toHaveTextContent("used on retry"), { timeout: 9000 });
+    expect(JSON.parse(calls.filter((c) => c.url === "/api/privilege/real/call").at(-1).opts.body)).toEqual({ approvalId: "ins_real1" });
+    expect(screen.queryByTestId("real-waiting")).toBeNull();
   }, 20000);
+  it("while the gateway still answers the same hold, the lab keeps waiting and counts the tries; Stop waiting ends it", async () => {
+    await realReady();
+    override.stillHeld = true;
+    await userEvent.click(screen.getByTestId("real-call"));
+    await waitFor(() => expect(screen.getByTestId("real-waiting")).toHaveTextContent(/1 so far/), { timeout: 9000 });
+    expect(screen.queryByTestId("real-msg")).toBeNull();
+    await userEvent.click(screen.getByTestId("real-stop-waiting"));
+    expect(screen.getByTestId("real-waiting")).toHaveTextContent(/Stopped waiting/);
+    const before = calls.filter((c) => c.url === "/api/privilege/real/call").length;
+    await new Promise((r) => setTimeout(r, 3500));
+    expect(calls.filter((c) => c.url === "/api/privilege/real/call").length).toBe(before);
+  }, 25000);
   it("the mock Try-your-own-call is not offered on the Real scenario, so a mock id can never reach the real gateway", async () => {
     await realReady();
     await userEvent.click(screen.getByText(/Try your own call/));
