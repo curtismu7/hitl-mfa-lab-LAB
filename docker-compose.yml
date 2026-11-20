@@ -21,6 +21,9 @@ services:
       HMLAB_REAL_AGENT_KEY: ${HMLAB_REAL_AGENT_KEY:-}
       HMLAB_REAL_TOOL: ${HMLAB_REAL_TOOL:-}
       HMLAB_REAL_ARGS: ${HMLAB_REAL_ARGS:-}
+      # Optional: plain http to ONE named host (a gateway published on the Docker host as host.docker.internal). Needs both, see .env.example.
+      HMLAB_REAL_ALLOW_HTTP_HOSTS: ${HMLAB_REAL_ALLOW_HTTP_HOSTS:-}
+      HMLAB_REAL_ALLOW_PRIVATE: ${HMLAB_REAL_ALLOW_PRIVATE:-}
       # Real PingID push (owner-run, optional): a real push to the approver's enrolled PingID app.
       HMLAB_PINGONE_ENV_ID: ${HMLAB_PINGONE_ENV_ID:-}
       HMLAB_PINGONE_REGION: ${HMLAB_PINGONE_REGION:-}
