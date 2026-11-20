@@ -56,7 +56,7 @@ export function createApp({
     source = next;
     clearAllowedHosts();
     const c = realConfigFrom(env);
-    if (next === 'real' && c.ok) allowHost(c.host, { privateOk: c.privateOk });
+    if (next === 'real' && c.ok) allowHost(c.host, { privateOk: c.privateOk, http: c.allowHttp });
   };
   applyMode(source);
   const castFor = (req) => loadCast(configFile, verticalFrom(req.query.vertical));

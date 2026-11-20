@@ -37,7 +37,7 @@ export function realConfigFrom(env = process.env) {
     try { args = JSON.parse(String(env.HMLAB_REAL_ARGS).slice(0, 2001)); } catch { return { ok: false, any, problem: 'HMLAB_REAL_ARGS is not valid JSON' }; }
     if (String(env.HMLAB_REAL_ARGS).length > 2000 || args === null || typeof args !== 'object' || Array.isArray(args)) return { ok: false, any, problem: 'HMLAB_REAL_ARGS must be a JSON object under 2000 characters' };
   }
-  return { ok: true, any, url: u.toString(), host: u.hostname.toLowerCase(), origin: u.origin, tool, args, privateOk };
+  return { ok: true, any, url: u.toString(), host: u.hostname.toLowerCase(), origin: u.origin, tool, args, privateOk, allowHttp: u.protocol === 'http:' && !isLoopbackHost(u.hostname) };
 }
 
 // Whether Real is configured (never the values).

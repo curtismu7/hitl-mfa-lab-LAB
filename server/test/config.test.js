@@ -67,7 +67,9 @@ test('plain http is allowed on loopback, or on a host named in HMLAB_REAL_ALLOW_
   assert.equal(realConfigFrom({ ...base, HMLAB_REAL_ALLOW_HTTP_HOSTS: 'host.docker.internal' }).ok, false, 'naming the host is not enough without the private opt-in');
   assert.equal(realConfigFrom({ ...base, HMLAB_REAL_ALLOW_PRIVATE: '1' }).ok, false, 'the private opt-in is not enough without naming the host');
   const ok = realConfigFrom({ ...base, HMLAB_REAL_ALLOW_HTTP_HOSTS: ' Host.Docker.Internal , other.example', HMLAB_REAL_ALLOW_PRIVATE: '1' });
-  assert.equal(ok.ok, true); assert.equal(ok.host, 'host.docker.internal'); assert.equal(ok.privateOk, true);
+  assert.equal(ok.ok, true); assert.equal(ok.host, 'host.docker.internal'); assert.equal(ok.privateOk, true); assert.equal(ok.allowHttp, true, 'the netguard is told this name may use plain http');
+  assert.equal(realConfigFrom({ ...base, HMLAB_REAL_URL: 'http://127.0.0.1:9/mcp' }).allowHttp, false, 'loopback needs no such opt-in');
+  assert.equal(realConfigFrom({ ...base, HMLAB_REAL_URL: 'https://gw.example/mcp' }).allowHttp, false, 'https is not plain http');
   const other = realConfigFrom({ ...base, HMLAB_REAL_URL: 'http://evil.example/mcp', HMLAB_REAL_ALLOW_HTTP_HOSTS: 'host.docker.internal', HMLAB_REAL_ALLOW_PRIVATE: '1' });
   assert.equal(other.ok, false, 'a host that is not named stays refused'); assert.match(other.problem, /must be https/);
 });
