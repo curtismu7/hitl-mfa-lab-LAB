@@ -6,7 +6,7 @@ import LiveFlow from "./LiveFlow";
 import GatewayTrace from "../gateway-trace/GatewayTrace.jsx";
 import TokenReel from "./TokenReel";
 import { nextTrail, realRun, reelCards } from "../liveFlow";
-import { callRealPrivilege, getRealPingid, sendRealPingidPush, pollRealPingidPush, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
+import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
 import { visible } from "../safeText";
 import PingIdSetup from "./PingIdSetup";
 
@@ -427,9 +427,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   const [realBusy, setRealBusy] = useState(false);
   const [realMsg, setRealMsg] = useState(null);
   const [realCfg, setRealCfg] = useState(null);
-  const [realPingCfg, setRealPingCfg] = useState(null);
-  const [realPhoneOpen, setRealPhoneOpen] = useState(true);
-  const [realPush, setRealPush] = useState({ daId: null, status: "idle", stop: true });
+  const [realWait, setRealWait] = useState(null); // while a Real hold is being retried: { tries, stopped, lapsed }
   const [approvalInput, setApprovalInput] = useState("");
   // Real mode (owner-run) makes ONE scenario real: the PRIVILEGE hold. Every other scenario stays simulated.
   const isReal = useCallback((sid) => mode === "real" && sid === "privilege-pingid", [mode]);
@@ -511,32 +509,16 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
 
   const realActive = isReal(id);
   useEffect(() => { if (realActive) getJson("/api/privilege/real").then(setRealCfg, () => setRealCfg(null)); }, [realActive]);
-  useEffect(() => { if (realActive) getRealPingid().then(setRealPingCfg, () => setRealPingCfg({ available: false })); }, [realActive]);
-  useEffect(() => {
-    if (!realPush.daId || realPush.stop) return undefined;
-    const t = setInterval(async () => {
-      const r = await pollRealPingidPush(realPush.daId).catch(() => null);
-      if (!r?.ok) return;
-      const st = r.body?.status;
-      const answered = { upstream: r.body.upstream || null, at: new Date().toLocaleTimeString() };
-      if (st === "approved") setRealPush((p) => ({ ...p, ...answered, status: "approved", stop: true }));
-      else if (st === "denied" || st === "failed") setRealPush((p) => ({ ...p, ...answered, status: st, stop: true }));
-    }, 3000);
-    return () => clearInterval(t);
-  }, [realPush.daId, realPush.stop]);
-  const realSendPush = async () => {
-    setRealPush({ daId: null, status: "sending", stop: false });
-    const r = await sendRealPingidPush(`Approve $150 transfer hold`).catch(() => ({ ok: false }));
-    if (!r.ok) return setRealPush({ daId: null, status: "failed", stop: true, reason: r.body?.message || null });
-    setRealPush({ daId: r.body.daId, status: "waiting", stop: false });
-  };
   useEffect(() => { if (realActive && run?.real && run?.error === "pending_approval") setApprovalInput(run.approval?.instruction_id || ""); }, [realActive, run]);
   // One real call. approvalId makes it the retry the owner sends after approving in their own console.
-  const realCall = async (approvalId = null) => {
-    setRealBusy(true); setRealMsg(null);
+  // quiet = an automatic retry while the hold is pending: a still-held answer only counts the try (no new trace row, no message).
+  const realCall = async (approvalId = null, { quiet = false } = {}) => {
+    if (!quiet) { setRealBusy(true); setRealMsg(null); }
     const r = await callRealPrivilege(approvalId).catch(() => ({ ok: false, status: 0, body: {} }));
-    setRealBusy(false);
+    if (!quiet) setRealBusy(false);
     const title = approvalId ? `tools/call retried with ${approvalId}` : "tools/call";
+    if (quiet && r.ok && r.body.outcome === "held") { setRealWait((w) => ({ ...(w || {}), tries: ((w && w.tries) || 0) + 1 })); return; }
+    if (quiet) setRealWait((w) => ({ ...(w || {}), stopped: true }));
     if (!r.ok) {
       setRealMsg(r.body.message || "The real call failed.");
       if (r.body.trace) setRealEx((e) => [...e, { step: e.length + 1, title, status: null, trace: r.body.trace }]);
@@ -550,6 +532,25 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     } else showFresh(mapped);
     setRealEx((e) => [...e, { step: e.length + 1, title, status: r.body.http, trace: r.body.trace }]);
   };
+  const realCallRef = useRef(realCall);
+  realCallRef.current = realCall;
+  // Real: once the gateway holds the call, PRIVILEGE sends the PingID push to the approvers (tenant MFA on). The lab never talks to PingID: it
+  // retries the same call with the instruction id every few seconds (a still-held call answers the same hold) until it runs, is refused or lapses.
+  const heldId = realActive && run?.real && run?.error === "pending_approval" ? run.approval?.instruction_id || null : null;
+  const heldExpires = heldId ? run.approval?.expires_at || null : null;
+  useEffect(() => { setRealWait(null); }, [heldId]);
+  useEffect(() => {
+    if (!heldId || realWait?.stopped) return undefined;
+    const lapse = Date.parse(heldExpires || "");
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy) return;
+      if (Number.isFinite(lapse) && Date.now() > lapse) { setRealWait((w) => ({ ...(w || {}), stopped: true, lapsed: true })); return; }
+      busy = true;
+      try { await realCallRef.current(heldId, { quiet: true }); } finally { busy = false; }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [heldId, heldExpires, realWait?.stopped]);
 
   const cards = reelCards(run, issued);
 
@@ -586,48 +587,25 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
             <h3>Real: your Privilege gateway <span className="tag tag--warn">REAL</span></h3>
             <p className="muted">
               {realCfg?.ok ? <>Door <code>{realCfg.host}</code>, tool <code>{realCfg.tool}</code>. </> : null}
-              The call below really goes to your gateway with your agent key (kept on the server, never shown here). Approving is yours: in your Privilege console open <strong>HITL Requests</strong>, approve, and PingID asks you on your phone. This lab cannot do that step and only infers it.
+              The call below really goes to your gateway with your agent key (kept on the server, never shown here). The approval is Privilege's and yours: Privilege sends the PingID push to the approvers' phones, you approve there, and this lab never talks to PingID. It only sends the call, waits, and retries; what it shows of the approval it observes or infers.
             </p>
             <h4>PingID through Privilege (the real path)</h4>
             <p className="muted">Privilege itself asks PingID; this lab only sends the call and waits. Check these in your Privilege console first:</p>
             <ol className="muted" data-testid="real-checklist">
               <li>Settings, Tenant: <strong>MFA is Enabled</strong>.</li>
               <li>An AI policy on this door{realCfg?.tool ? <> for <code>{realCfg.tool}</code></> : null} is <strong>Active</strong> with outcome <strong>Require human approval</strong> (MCP server and target must match the tool).</li>
-              <li>The approver has the PingID app paired and signs in to the console as the approving user.</li>
+              <li>The approvers named in that policy have the PingID app paired. With tenant MFA on, the hold itself sends them the push.</li>
             </ol>
-            <p className="muted">Then press <strong>Send the real call</strong>. Expect a hold (<code>pending_approval</code> with an instruction id). Privilege then sends the PingID prompt to the approver's phone: in the recording it arrived right after the hold; if yours does not, open <strong>HITL Requests</strong> and click Approve. Tap Yes on the phone, then retry with the approval id.</p>
+            <p className="muted">Then press <strong>Send the real call</strong>. Expect a hold (<code>pending_approval</code> with an instruction id). Privilege then sends the PingID push to the approvers' phones: approve it there. The lab retries by itself every 3 seconds until the call runs, is refused or the hold lapses. If no push arrives (tenant MFA off), approve in <strong>HITL Requests</strong>; the retry still picks it up.</p>
             {/* ui-pattern: allow P9 only shown while the scenario is Real, when the mock AgentCall (the other primary) is not rendered */}
             <button type="button" className="primary" data-testid="real-call" disabled={realBusy} onClick={() => realCall(null)}>Send the real call</button>
-            {realPingCfg?.available && !realPhoneOpen && (
-              <button type="button" className="link" data-testid="real-pingid-reopen" onClick={() => setRealPhoneOpen(true)}>Show the PingID phone</button>
-            )}
-            {realPingCfg?.available && (
-              <PhoneDialog isOpen={realPhoneOpen} onClose={() => setRealPhoneOpen(false)} title="PingID: direct push from this lab (not Privilege)" testId="real-pingid" singletonKey="real-pingid-phone">
-                <p className="phone__app">PingID</p>
-                <p className="phone__msg">
-                  {realPush.status === "idle" && "Send a real push to your enrolled PingID app, then approve there. Approving here proves the approver; the console approval of the hold is still yours."}
-                  {realPush.status === "sending" && "Sending the push…"}
-                  {realPush.status === "waiting" && "Push sent. Check your phone: approve to confirm, or refuse."}
-                  {realPush.status === "approved" && "Approved on the phone. Retry the call with the approval id below."}
-                  {realPush.status === "denied" && "Refused on the phone. Nothing is approved."}
-                  {realPush.status === "failed" && (realPush.reason ? `The push failed: ${realPush.reason}` : "The push failed or timed out. Send it again.")}
-                </p>
-                {realPush.upstream && (
-                  <p className="phone__msg" role="status" data-testid="real-push-result">
-                    <strong>
-                      {realPush.status === "approved" ? "PingID answered: APPROVED. The real push worked." : realPush.status === "denied" ? "PingID answered: REFUSED." : "PingID gave no answer."}
-                    </strong>{" "}
-                    PingOne reported <code>{realPush.upstream}</code> at {realPush.at}.
-                  </p>
-                )}
-                <div className="modal__actions">
-                  {realPush.status !== "waiting" && (
-                    <button type="button" data-testid="real-push-send" disabled={realPush.status === "sending"} onClick={realSendPush}>
-                      {realPush.status === "idle" ? "Send PingID push" : "Send again"}
-                    </button>
-                  )}
-                </div>
-              </PhoneDialog>
+            {heldId && (
+              <p className="muted" role="status" data-testid="real-waiting">
+                {realWait?.lapsed ? "The hold lapsed before anyone approved it. Press Send the real call for a fresh hold."
+                  : realWait?.stopped ? "Stopped waiting. Use the manual retry below, or send the real call again."
+                  : <>Waiting for the approval: Privilege has sent the PingID push to the approvers. Retrying every 3 s ({realWait?.tries || 0} so far).{" "}
+                    <button type="button" className="link" data-testid="real-stop-waiting" onClick={() => setRealWait((w) => ({ ...(w || {}), stopped: true }))}>Stop waiting</button></>}
+              </p>
             )}
             {run?.error === "pending_approval" && (
               <>

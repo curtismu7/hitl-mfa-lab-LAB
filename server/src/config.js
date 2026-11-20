@@ -22,7 +22,11 @@ export function realConfigFrom(env = process.env) {
   if (!url || !env.HMLAB_REAL_AGENT_KEY || !tool) return { ok: false, any, problem: 'HMLAB_REAL_URL, HMLAB_REAL_AGENT_KEY and HMLAB_REAL_TOOL are all needed for Real mode' };
   let u;
   try { u = new URL(url); } catch { return { ok: false, any, problem: 'HMLAB_REAL_URL is not a valid URL' }; }
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && isLoopbackHost(u.hostname))) return { ok: false, any, problem: 'HMLAB_REAL_URL must be https (http is allowed on loopback only)' };
+  // Plain http is for loopback, or for ONE named host the owner lists in HMLAB_REAL_ALLOW_HTTP_HOSTS (e.g. a gateway published on the Docker host
+  // as host.docker.internal) AND only together with HMLAB_REAL_ALLOW_PRIVATE=1, because such a name resolves to a private address.
+  const httpHosts = String(env.HMLAB_REAL_ALLOW_HTTP_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  const httpOk = u.protocol === 'http:' && (isLoopbackHost(u.hostname) || (env.HMLAB_REAL_ALLOW_PRIVATE === '1' && httpHosts.includes(u.hostname.toLowerCase())));
+  if (u.protocol !== 'https:' && !httpOk) return { ok: false, any, problem: 'HMLAB_REAL_URL must be https (http is allowed on loopback, or on a host named in HMLAB_REAL_ALLOW_HTTP_HOSTS together with HMLAB_REAL_ALLOW_PRIVATE=1)' };
   if (u.username || u.password) return { ok: false, any, problem: 'HMLAB_REAL_URL must not carry credentials' };
   const privateOk = env.HMLAB_REAL_ALLOW_PRIVATE === '1';
   const literal = /^\[?[0-9a-f:.]+\]?$/i.test(u.hostname) && (u.hostname.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(u.hostname));
