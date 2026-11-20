@@ -160,3 +160,20 @@ test('Real allowlist (resolver, socket and fetch stubbed UNDER the guard, so no 
     await assert.rejects(look('lan.invalid'), /network blocked/);
   } finally { g.restore(); dns.lookup = saved.lookup; net.Socket.prototype.connect = saved.connect; globalThis.fetch = saved.fetch; }
 });
+
+test('plain http to an allowed name needs its own opt-in: refused without it, let through by the guard with it', async () => {
+  const guard = installNetguard();
+  try {
+    allowHost('gw.example.invalid', { privateOk: true });
+    await assert.rejects(() => fetch('http://gw.example.invalid/mcp', { signal: AbortSignal.timeout(3000) }), /network blocked: gw\.example\.invalid/, 'http is refused for an allowed name without the http opt-in');
+    clearAllowedHosts();
+    allowHost('gw.example.invalid', { privateOk: true, http: true });
+    await assert.rejects(
+      () => fetch('http://gw.example.invalid/mcp', { signal: AbortSignal.timeout(3000) }),
+      (e) => !/network blocked/.test(`${e.message} ${e.cause?.message || ''}`),
+      'with the opt-in the guard lets the request through (it then fails to resolve: .invalid), it is not a guard refusal');
+    clearAllowedHosts();
+    await assert.rejects(() => fetch('http://other.example.invalid/mcp', { signal: AbortSignal.timeout(3000) }), /network blocked: other\.example\.invalid/, 'another name stays refused');
+  } finally { clearAllowedHosts(); guard.restore(); }
+});
+

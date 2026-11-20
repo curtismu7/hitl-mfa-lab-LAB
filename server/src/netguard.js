@@ -13,8 +13,17 @@ let active = null;
 const allowedHosts = new Set();
 const allowedIps = new Set();
 let allowPrivate = false; // owner opt-in (HMLAB_REAL_ALLOW_PRIVATE=1): the gateway lives on a private network
-export const allowHost = (host, { privateOk = false } = {}) => { if (!active) return false; allowedHosts.add(String(host).toLowerCase().replace(/^\[|\]$/g, '')); allowPrivate = !!privateOk; return true; };
-export const clearAllowedHosts = () => { allowedHosts.clear(); allowedIps.clear(); allowPrivate = false; };
+// Plain http to an allowed (non-loopback) name is refused unless the owner opted in for that name (HMLAB_REAL_ALLOW_HTTP_HOSTS), see config.js.
+const allowedHttpHosts = new Set();
+export const allowHost = (host, { privateOk = false, http = false } = {}) => {
+  if (!active) return false;
+  const h = String(host).toLowerCase().replace(/^\[|\]$/g, '');
+  allowedHosts.add(h);
+  if (http) allowedHttpHosts.add(h);
+  allowPrivate = !!privateOk;
+  return true;
+};
+export const clearAllowedHosts = () => { allowedHosts.clear(); allowedHttpHosts.clear(); allowedIps.clear(); allowPrivate = false; };
 
 /** Private, loopback, link-local (incl. the cloud metadata address), CGNAT, multicast, unspecified and ULA addresses. A name that is
  * allowed for the real gateway must not be able to point a call at an internal address (DNS rebinding / SSRF). */
@@ -119,8 +128,9 @@ export function installNetguard() {
   globalThis.fetch = async function guardedFetch(input, init) {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
     if (!isLoopbackHost(url.hostname)) {
-      // The one allowed name, over https only, and never a redirect: a redirect could leave the allowed origin.
-      if (!(nameAllowed(url.hostname) && url.protocol === 'https:')) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
+      // The one allowed name, over https (or plain http only for a name the owner opted in), and never a redirect: a redirect could leave the allowed origin.
+      const protoOk = url.protocol === 'https:' || (url.protocol === 'http:' && allowedHttpHosts.has(url.hostname.toLowerCase().replace(/^\[|\]$/g, '')));
+      if (!(nameAllowed(url.hostname) && protoOk)) { attempts.push(`fetch:${url.hostname}`); throw new Error(`network blocked: ${url.hostname}`); }
       return real.fetch(input, { ...init, redirect: 'error' });
     }
     return real.fetch(input, init);
