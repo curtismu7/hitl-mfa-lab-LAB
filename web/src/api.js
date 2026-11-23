@@ -74,3 +74,17 @@ export const callRealPrivilege = (approvalId = null) => postJson("/api/privilege
 // The Privilege console's HITL Requests (mock): list what is held, and decide one. Approving needs a PingID confirmation.
 export const getPrivilegeQueue = () => getJson("/api/privilege/hitl");
 export const decidePrivilege = (id, payload) => postJson(`/api/privilege/hitl/${encodeURIComponent(id)}/decide`, payload);
+
+// Rule 27: the record of the newest run of the CURRENT mode. A record (with rows), { record: null, message } before a run, or { error, message }
+// for anything that is not a record (a structured error, an HTML page, a body that is not JSON).
+export async function getRunObservability() {
+  const r = await workspaceFetch("/api/run-observability", { method: "GET", cache: "no-store" });
+  const body = await r.json().catch(() => null);
+  const isObject = body !== null && typeof body === "object" && !Array.isArray(body);
+  if (r.status === 200 && isObject && Array.isArray(body.rows)) return body;
+  if (r.status === 200 && isObject && body.record === null) return { record: null, message: typeof body.message === "string" ? body.message : "No run yet." };
+  return {
+    error: (isObject && typeof body.error === "string" && body.error) || (r.status === 200 ? "bad_answer" : `http_${r.status}`),
+    message: (isObject && typeof body.message === "string" && body.message) || (r.status === 200 ? "The lab answered something that is not a run record." : `The run record could not be read (HTTP ${r.status}).`),
+  };
+}
