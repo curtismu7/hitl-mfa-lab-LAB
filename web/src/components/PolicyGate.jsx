@@ -432,6 +432,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   const [approvalInput, setApprovalInput] = useState("");
   const [obsGen, setObsGen] = useState(0); // rule 27: bumped when a new run starts, so the panel never shows the previous run's record as the new one
   const [obsNoRun, setObsNoRun] = useState(false); // the last attempt began no run (the server refused it before any decision)
+  const [obsAfterReset, setObsAfterReset] = useState(false); // a real reply came back after Reset: the server wrote it to stdout only
   // Real mode (owner-run) makes ONE scenario real: the PRIVILEGE hold. Every other scenario stays simulated.
   const isReal = useCallback((sid) => mode === "real" && sid === "privilege-pingid", [mode]);
   const [pingidOpen, setPingidOpen] = useState(false);
@@ -450,7 +451,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   useEffect(() => { loadBands(); }, [loadBands, resetSignal]);
 
   // A fresh call starts the flow and the reel over; the retry after a human beat continues them.
-  const showFresh = useCallback((body) => { setObsGen((g) => g + 1); setObsNoRun(false); setRun(body); setTrail((t) => nextTrail(t, body, true)); const cid = body.challengeId || body.approval?.instruction_id; setIssued(cid ? { challenge: { id: cid, ...(body.approval ? { approval: body.approval } : {}) } } : {}); }, []);
+  const showFresh = useCallback((body) => { setObsGen((g) => g + 1); setObsNoRun(false); setObsAfterReset(false); setRun(body); setTrail((t) => nextTrail(t, body, true)); const cid = body.challengeId || body.approval?.instruction_id; setIssued(cid ? { challenge: { id: cid, ...(body.approval ? { approval: body.approval } : {}) } } : {}); }, []);
   const showRetry = useCallback((body) => { setRun(body); setTrail((t) => nextTrail(t, body, false)); }, []);
 
   // Run a shipped scenario: set its bands, then make the call — exactly what the gate measures.
@@ -479,17 +480,17 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       else if (res.body.error === "ciba_required") setBeat({ kind: "ciba", payload });
       else if (res.body.error === "pending_approval") setBeat({ kind: "privilege", payload, challengeId: res.body.approval?.instruction_id });
       else if (res.body.error === "mcp_hitl_required") setBeat({ kind: "hitl", payload, challengeId: res.body.challengeId });
-    } else { setRun(null); setTrail([]); setIssued({}); setObsNoRun(true); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
+    } else { setRun(null); setTrail([]); setIssued({}); setObsNoRun(true); setObsAfterReset(false); setFail(`Could not evaluate (${res.body.detail || res.body.error || res.status}).`); }
   }, [story, showFresh, isReal]);
 
-  useEffect(() => { setRun(null); setBeat(null); setTrail([]); setIssued({}); setObsNoRun(false); }, [resetSignal]);
+  useEffect(() => { setRun(null); setBeat(null); setTrail([]); setIssued({}); setObsNoRun(false); setObsAfterReset(false); }, [resetSignal]);
   // No auto-run: the visitor makes the agent call themselves. Switching chips only selects; the
   // run starts on their click. A chip switch clears the previous run instead of starting a new one.
   const lastId = useRef(id);
   useEffect(() => {
     if (lastId.current === id) return;
     lastId.current = id;
-    setRun(null); setBeat(null); setTrail([]); setIssued({}); setObsNoRun(false);
+    setRun(null); setBeat(null); setTrail([]); setIssued({}); setObsNoRun(false); setObsAfterReset(false);
   }, [id]);
 
   const onResult = useCallback((r) => showFresh(r), [showFresh]);
@@ -503,7 +504,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     if (!beat?.payload) return;
     // Same guard as runScenario: a newer scenario run or a Reset makes this (slower) retry's answer stale, so it is dropped.
     const token = ++runToken.current;
-    runTool(beat.payload, opts).then((res) => {
+    runTool(beat.payload, { ...opts, retry: true }).then((res) => {
       if (token !== runToken.current || !(res.ok || res.body.decision)) return;
       // A Privilege retry that is refused (lapsed, wrong amount) opens a fresh hold: show it and ask the approver again.
       if (res.body.error === "pending_approval") { showFresh(res.body); setBeat({ kind: "privilege", payload: beat.payload, challengeId: res.body.approval?.instruction_id }); } else showRetry(res.body);
@@ -522,8 +523,12 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     const title = approvalId ? `tools/call retried with ${approvalId}` : "tools/call";
     if (quiet && r.ok && r.body.outcome === "held") { setRealWait((w) => ({ ...(w || {}), tries: ((w && w.tries) || 0) + 1 })); return; }
     if (quiet) setRealWait((w) => ({ ...(w || {}), stopped: true }));
-    if (!approvalId) { setObsGen((g) => g + 1); setObsNoRun(!r.ok && !r.body.trace); } // a first call starts a run, unless the lab refused it before any call was made
+    // The server says which run the call belongs to (runObservability): began = a run holds it, afterReset = a Reset came while it was in flight. A first call starts a run.
+    const info = r.body.runObservability;
+    const afterReset = Boolean(info?.afterReset);
+    if (!approvalId) { setObsGen((g) => g + 1); setObsNoRun(!info?.began && !afterReset); }
     if (!r.ok) {
+      setObsAfterReset(afterReset);
       setRealMsg(r.body.message || "The real call failed.");
       if (r.body.trace) setRealEx((e) => [...e, { step: e.length + 1, title, status: null, trace: r.body.trace }]);
       return;
@@ -535,6 +540,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       if (r.body.outcome === "held") setRealMsg("The gateway held it again: it did not accept that approval id (not approved yet, expired, or not the id for this call).");
     } else showFresh(mapped);
     setRealEx((e) => [...e, { step: e.length + 1, title, status: r.body.http, trace: r.body.trace }]);
+    setObsAfterReset(afterReset); // after showFresh, which clears it for a new run
   };
   const realCallRef = useRef(realCall);
   realCallRef.current = realCall;
@@ -628,7 +634,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       </section>
 
       <div className="panel gate-obs" data-testid="step-obs">
-        <RunObs mode={mode} hasRun={realActive ? realEx.length > 0 : Boolean(run)} noRun={obsNoRun} simulatedInReal={mode === "real" && !realActive} gen={obsGen} beat={beat} />
+        <RunObs mode={mode} hasRun={realActive ? realEx.length > 0 : Boolean(run)} noRun={obsNoRun} afterReset={obsAfterReset} simulatedInReal={mode === "real" && !realActive} gen={obsGen} beat={beat} />
       </div>
 
       <details className="panel gate-more" data-testid="step-try">

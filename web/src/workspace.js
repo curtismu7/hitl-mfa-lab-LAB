@@ -13,10 +13,11 @@ export function workspaceId() {
   return memo;
 }
 
-// Rule 27: every write (a step, a human beat, a failed one too) tells the run-observability panel to read its record again. A read (a poll) does not.
-const stepDone = () => { try { window.dispatchEvent(new Event("hmlab-step")); } catch { /* no window */ } };
-export const workspaceFetch = (url, opts = {}) => {
+// Rule 27: every write (a step, a human beat, a failed one too) tells the run-observability panel to read its record again. A read (a poll) does not,
+// and a caller that knows better passes announce: false and calls announceStep itself (the real call's automatic retry: a still-held answer adds nothing).
+export const announceStep = () => { try { window.dispatchEvent(new Event("hmlab-step")); } catch { /* no window */ } };
+export const workspaceFetch = (url, { announce = true, ...opts } = {}) => {
   const p = fetch(url, { ...opts, headers: { "content-type": "application/json", ...(opts.headers || {}), "x-workspace": workspaceId() } });
-  if (opts.method && opts.method !== "GET") p.then(stepDone, stepDone);
+  if (announce && opts.method && opts.method !== "GET") p.then(announceStep, announceStep);
   return p;
 };

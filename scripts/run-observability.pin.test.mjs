@@ -43,6 +43,11 @@ test('this lab reads no product logs: no readers file, and none of its own serve
   // the vendored core's own comment and "no reader is configured" message name the variables a log-reading lab would set; every other server file is the lab's
   for (const f of fs.readdirSync(path.join(root, 'server/src')).filter((n) => n.endsWith('.js') && n !== 'runObservability.js')) assert.ok(!NAMES.test(read(`server/src/${f}`)), `server/src/${f} names a reader`);
   for (const f of ['docker-compose.yml', '.env.example', 'Dockerfile']) assert.ok(!/RUN_OBS_/.test(read(f)), `${f} sets a run-observability reader variable`);
+  // nor does any of the lab's own web files (the vendored folder, whose own tests and comments may, is the one exception)
+  const walk = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (`${dir}/${e.name}` === 'web/src/run-observability' ? [] : walk(`${dir}/${e.name}`)) : [`${dir}/${e.name}`]));
+  const web = walk('web/src').filter((f) => /\.(jsx?|css|html)$/.test(f));
+  assert.ok(web.length > 20, 'the scan found the lab\'s web files');
+  for (const f of web) assert.ok(!/RUN_OBS_/.test(read(f)), `${f} carries the RUN_OBS_ prefix`);
 });
 
 test('compose never mounts the Docker socket', () => {

@@ -20,7 +20,7 @@ Scaffold copied from mcp-gateway-lab-LAB (fork rule 4 attribution); every surfac
 - `./scripts/run.sh` — host-run on port 7680 (Node >= 26), opens the browser.
 - Docker: `HOST_PORT=7680 docker compose up --build -d` (published on 127.0.0.1 only).
 - Through the shared lab-proxy: `https://local.ping-devops.com:8443/hitl-mfa-lab/` (never a raw loopback URL).
-- Tests: `npm ci && npm test` — 160 server + 249 web + 32 packaging and pin tests.
+- Tests: `npm ci && npm test` — 166 server + 258 web + 32 packaging and pin tests.
 
 ## Run from a clone
 
@@ -61,14 +61,20 @@ Under the Gate result the page shows the shared run-observability panel (`web/sr
 
 | Layer | Mock (`simulated`) | Real, the PRIVILEGE scenario (`response`) |
 |---|---|---|
-| Person | the approver's answers: consent, device MFA code, PingID push, CIBA, HITL Requests with PingID. A pending request is information; the answer is the decision | not logged: the lab never calls PingID or PingOne. With tenant MFA on, the approval push is Privilege's and nothing reports it back |
+| Person | the approver's answers: consent, PingID push, CIBA, HITL Requests with PingID (the answer is the decision; a pending request is information). The device MFA code is the IdP's check: a wrong code is refused, the right one is information, because issuing the credential is not a decision | not logged: the lab never calls PingID or PingOne. With tenant MFA on, the approval push is Privilege's and nothing reports it back |
 | Agent | not logged: the lab mints no agent token (the bearer is a placeholder) and the agent context is a flag on the call, so there is no delegation or act claim to show | not logged: the lab sends one agent key (never shown) and holds no claims |
 | Authorize | the amount-band gate, which is this lab's own mock of PingOne Authorize: PERMIT allowed, DENY refused, a consent or step-up hold is information (a hold is not a refusal) | not logged: the lab does not call PingOne Authorize; the hold is Privilege's own policy |
 | Privilege | the mock Privilege policy `ai-transfer-hitl:1`: the hold is information, a presented approval is allowed or refused | not logged: this lab has no log reader |
-| Agent gateway | not logged: there is no separate gateway in Mock; the mock gate answers the call itself | the one reply the lab received from the door: a hold is information, 401/403, a JSON-RPC error or `isError` is refused, a usable result is allowed, a redirect the lab did not follow is blocked |
-| Resource server | not logged: there is no tool server in Mock, nothing executes | only an executed reply: the tool answered through the gateway |
+| Agent gateway | not logged: there is no separate gateway in Mock; the mock gate answers the call itself | the one reply the lab received from the door: a hold is information; 401/403 is refused; a 200 carrying a JSON-RPC error or `isError` is counted as refused (the lab cannot tell a gateway decision from the tool's own error, and the row says so); a usable result is allowed; a redirect the lab did not follow is blocked (the lab's own stop, shown with the lab as the product; the existing "What Privilege did" trace shows the same redirect as refused, observed); a call that got no reply is an information row |
+| Resource server | not logged: there is no tool server in Mock, nothing executes | only an executed reply, as information: the lab's reading of the same HTTP 200, not a second decision |
 
-Time is when the lab recorded the decision (Mock) or received the reply (Real): each decision is stamped once, and the row time is the stdout time. Only a scenario that is real in Real mode has Real rows; the other six stay simulated, and the panel says so instead of showing a simulated run under a Real label. A call that got no reply (a timeout, a refused connection) has no row: the gateway layer says why. A retry that gets the same hold again adds no row.
+Time is when the lab recorded the decision (Mock) or received the reply (Real): each decision is stamped once, and the row time is the stdout time. Only a scenario that is real in Real mode has Real rows; the other six stay simulated, and the panel says so instead of showing a simulated run under a Real label.
+
+- **No reply.** A call that got no reply (a timeout, a lost connection), the first call or the automatic retry of a hold, is an information row on the gateway that says so, in time order, and a stdout line with `result=no-reply`. The run stays open: it is still waiting.
+- **Repeats.** A retry that gets the same hold again adds no row and no line while that run waits. An answer or a lapse seen twice (the same push answered twice, a poll that keeps finding the lapse) is recorded once. A hold that comes back after its run closed is written to stdout and starts its own run.
+- **An answer joins the run that asked.** A consent challenge, an MFA challenge, a push, a CIBA request and a Privilege request are bound to their run when they are made, and the answer names that id. An answer for a run that has since been replaced joins nothing: it is on stdout only (`run=-`). A retry after a human beat joins its run because it presents a receipt or approval, or because the page marks it (`X-Hmlab-Retry: 1`), so a retry the gate blocks again (a lapsed credential) stays in the run that holds the approver's answer; a plain repeat of the same call is a fresh call.
+- **Lapses are seen on a poll.** This lab runs no timer: a push or CIBA request nobody answers is recorded, and its run closed, when the agent's poll first finds it lapsed. The page reads the record again at that moment (once per request), so the panel updates within one poll. It also reads after every write, but not on every poll, and not after an automatic retry that was held again (the answer says whether it added a row).
+- **After Reset.** A real call still in flight when you press Reset still answers, but its reply is in no record (stdout only), and the panel says so.
 
 **Where these logs live and where they can stream.** The lab's server writes one stdout line per decision, in the lab container's log:
 
@@ -76,7 +82,7 @@ Time is when the lab recorded the decision (Mock) or received the reply (Real): 
 <iso> hitl-mfa-lab decision step=<step> layer=<layer> actor=<who> result=passed|stopped|unclear|no-reply mode=mock|real run=<id>
 ```
 
-Every value is cut to safe characters and masked like the row, and no token, key or code is ever in it. It streams nowhere today: the family log collector (`shared/ping-log-collector/vector.yaml`) does not list this lab's container. If it did, the SIEM `@timestamp` would be Docker's wall-clock time for each line. This lab reads no product logs, so it vendors only the shared core (no readers file), sets no `RUN_OBS_*` variable and never mounts the Docker socket. Not logged today: PingOne Authorize has no container log (the amount-band gate here is a mock), the Privilege gateway's own policy and approval events are not read (the hosted gateway's events live in the Privilege SIEM index and the console Activity Logs), gateway refusal and block line shapes are unconfirmed, and the PingOne audit reader does not exist.
+Every value is cut to safe characters and masked like the row, the words the family's matchers read as a decision are cut out of a typed name, and no token, key or code is ever in it. It streams nowhere today: the family log collector (`shared/ping-log-collector/vector.yaml`) does not list this lab's container. If it did, the SIEM `@timestamp` would be Docker's wall-clock time for each line. This lab reads no product logs, so it vendors only the shared core (no readers file), sets no `RUN_OBS_*` variable and never mounts the Docker socket. Not logged today: PingOne Authorize has no container log (the amount-band gate here is a mock), the Privilege gateway's own policy and approval events are not read (the hosted gateway's events live in the Privilege SIEM index and the console Activity Logs), gateway refusal and block line shapes are unconfirmed, and the PingOne audit reader does not exist.
 
 ## Scenarios
 
@@ -91,12 +97,12 @@ Every value is cut to safe characters and masked like the row, and no token, key
 ## Surface
 
 - `GET/POST /api/policy` — read / set this workspace's bands (normalized; a crossing edit falls back to the defaults, never wider).
-- `POST /api/transfer` — the gated tool call; 428 = a human beat is required, 403 = deny, 200 = permitted (the decision, reason, receipt and W3C-traceparent hops are the answer).
+- `POST /api/transfer` — the gated tool call; 428 = a human beat is required, 403 = deny, 200 = permitted (the decision, reason, receipt and W3C-traceparent hops are the answer). The retry after a human beat may carry `X-Hmlab-Retry: 1` (the page does), which only tells the run record the call is that retry.
 - `POST /api/mfa/challenge`, `POST /api/mfa/verify` — the MFA beat (demo OTP `123123`).
 - `POST /api/ciba/bc-authorize`, `GET /api/ciba/poll/:authReqId`, `POST /api/ciba/respond` — the CIBA beat.
 - `POST /api/mfa/push`, `GET /api/mfa/poll/:id`, `POST /api/mfa/push/:id/respond` — the PingID push beat (mock): a push goes to the approver's phone (the in-page mock phone answers it), the agent polls, approval mints a single-use, amount-bound credit (`push`) for the retry. Declared with `step_up_method: "pingid-push"` (the PUSH scenario). Nothing is sent to PingOne or a real phone; the measured real chain is the sign-in step-up (see the PingID setup wizard).
 - `npm run privilege-verify` — owner-run: one real held call against your gateway and your approval, then prints the answer shape (403 JSON-RPC vs 200 text) and which id the retry needs. Settles the two UNVERIFIED facts about your tenant. Needs the `HMLAB_REAL_*` settings and your phone; agents never run it.
-- `GET /api/privilege/real`, `POST /api/privilege/real/call` (`{}` or `{ approvalId }`) — Real only (409 in Mock): the one real call and its retry; structured JSON on every outcome, 502 when the gateway is unreachable.
+- `GET /api/privilege/real`, `POST /api/privilege/real/call` (`{}` or `{ approvalId }`) — Real only (409 in Mock): the one real call and its retry; structured JSON on every outcome, 502 when the gateway is unreachable. Every answer also carries `runObservability: { began, recorded, afterReset }` (a run holds the call, it added a row, a Reset came while it was in flight), which the page reads instead of guessing.
 - `GET /api/privilege/hitl`, `POST /api/privilege/hitl/:id/decide` — the mock Privilege console's HITL Requests: list what the gateway holds, and decide one (`{ decision: "approve", pingid: { method: "push", result } | { method: "passcode", code } }` or `{ decision: "reject" }`). `POST /api/transfer` with `step_up_method: "privilege"` is the held call; the retry sends `X-Procyon-Approval-Id`.
 - `GET /api/run-observability` — the record of the newest run of the CURRENT mode in this workspace (`{ record: null, message }` before a run; `{ error, message }` JSON on a failure). Rule 27, see below.
 - `GET /api/scenarios` — the story as data. `GET /api/diagram` — the diagram-studio data. `GET /api/health` — `demo-health/1`.

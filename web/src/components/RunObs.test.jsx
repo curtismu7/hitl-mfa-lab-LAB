@@ -1,7 +1,7 @@
 // Rule 27 on this lab's page: the shared panel under the Gate result. Mock rows are simulated, Real rows are replies the lab received; the lab reads no logs.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import RunObs, { RUN_OBS_STREAMS } from "./RunObs";
+import RunObs, { LAB_STREAMS } from "./RunObs";
 import { setJsonView } from "./JsonPane.jsx";
 import { workspaceFetch } from "../workspace";
 import { getRunObservability } from "../api";
@@ -44,7 +44,7 @@ describe("RunObs", () => {
     expect(document.querySelector('tr[data-origin="logged"]')).toBeNull();
     expect(document.querySelectorAll('[data-origin="simulated"].ro-chip').length).toBeGreaterThan(1);
     expect(screen.getByTestId("ro-streams").textContent).toMatch(/HITL MFA Lab server/);
-    expect(RUN_OBS_STREAMS.length).toBe(3);
+    expect(LAB_STREAMS.length).toBe(3);
     expect(screen.getByTestId("ro-lab-note").textContent).toMatch(/mock of PingOne Authorize/);
   });
 
@@ -139,6 +139,17 @@ describe("RunObs", () => {
     expect(screen.queryByTestId("ro-table")).toBeNull();
     rerender(<RunObs mode="real" hasRun gen={2} noRun />);
     expect(screen.getByTestId("ro-no-run").textContent).toMatch(/began no run/);
+    expect(screen.queryByTestId("ro-table")).toBeNull();
+    expect(getRunObservability).not.toHaveBeenCalled();
+  });
+
+  it("a real reply that came back after Reset says so (it is on stdout only), asks for no record and never shows the older one", async () => {
+    getRunObservability.mockResolvedValue(REAL_RECORD);
+    const { rerender } = render(<RunObs mode="real" hasRun gen={1} />);
+    await waitFor(() => expect(screen.getByTestId("ro-table")).toBeTruthy());
+    getRunObservability.mockClear();
+    rerender(<RunObs mode="real" hasRun gen={1} afterReset />);
+    expect(screen.getByTestId("ro-after-reset").textContent).toMatch(/arrived after Reset.*stdout log only.*in no record/);
     expect(screen.queryByTestId("ro-table")).toBeNull();
     expect(getRunObservability).not.toHaveBeenCalled();
   });

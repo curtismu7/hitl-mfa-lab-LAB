@@ -65,12 +65,14 @@ function mockFetch() {
     if (url === "/api/privilege/real" && (!opts.method || opts.method === "GET")) return json({ mode: "real", ok: true, host: "gw.example", tool: "IndexMappingTool", retryHeader: "X-Procyon-Approval-Id" });
     if (url === "/api/privilege/real/call") {
       const b = JSON.parse(opts.body || "{}");
-      if (override.realBusy) return json({ error: "busy", message: "a real call is already in flight" }, 429);
-      if (override.realFail) return json({ error: "upstream_unreachable", message: "Could not reach the gateway: ECONNREFUSED", trace: realTrace(null, null) }, 502);
+      // What the server adds to every real answer (rule 27): began = a run holds the call, recorded = it added a row, afterReset = a Reset came while it was in flight.
+      const ro = (began, recorded, afterReset = false) => ({ began, recorded, afterReset });
+      if (override.realBusy) return json({ error: "busy", message: "a real call is already in flight", runObservability: ro(false, false) }, 429);
+      if (override.realFail) return json({ error: "upstream_unreachable", message: "Could not reach the gateway: ECONNREFUSED", trace: realTrace(null, null), runObservability: ro(true, true) }, 502);
       const executed = b.approvalId === "ins_real1" && !override.stillHeld;
       return json(executed
-        ? { outcome: "executed", basis: "observed", http: 200, tool: "IndexMappingTool", approvalPresented: "ins_real1", summary: "ok", trace: realTrace(200, { jsonrpc: "2.0", id: 1, result: { content: [] } }) }
-        : { outcome: "held", basis: "observed", http: 403, tool: "IndexMappingTool", approvalPresented: b.approvalId || null, held: { instruction_id: "ins_real1", policy_ids: ["p:1"], reason: "r", retry_header: "X-Procyon-Approval-Id" }, trace: realTrace(403, { jsonrpc: "2.0", id: 1, error: { code: -32600, data: { status: "pending_approval" } } }) });
+        ? { outcome: "executed", basis: "observed", http: 200, tool: "IndexMappingTool", approvalPresented: "ins_real1", summary: "ok", trace: realTrace(200, { jsonrpc: "2.0", id: 1, result: { content: [] } }), runObservability: ro(true, true) }
+        : { outcome: "held", basis: "observed", http: 403, tool: "IndexMappingTool", approvalPresented: b.approvalId || null, held: { instruction_id: "ins_real1", policy_ids: ["p:1"], reason: "r", retry_header: "X-Procyon-Approval-Id" }, trace: realTrace(403, { jsonrpc: "2.0", id: 1, error: { code: -32600, data: { status: "pending_approval" } } }), runObservability: override.afterReset ? ro(false, false, true) : ro(true, !b.approvalId) });
     }
     if (url === "/api/privilege/hitl") return json({ requests: [{ id: "ins_000001", tool: "create_transfer", amount: 150, status: override.privApproved ? "approved" : "pending" }], policy: { demoPasscode: "123123" }, workspace: "t" });
     if (url === "/api/privilege/hitl/ins_000001/decide") {
@@ -112,6 +114,7 @@ function mockFetch() {
     if (url === "/api/mfa/poll/push-0001") {
       if (override.pushDecision === "approved") { override.approved = true; override.approvedFor = 150; override.approvedKind = "push"; return json({ status: "verified", receipt: { id: "push-receipt-0001", ttlMs: 300000, kind: "push" } }); }
       if (override.pushDecision === "denied") return json({ status: "denied" });
+      if (override.pushFailed) return json({ status: "failed", detail: "the push timed out with no answer" });
       return json({ status: "pending" });
     }
     if (url === "/api/mfa/challenge") return json({ challenge: { id: "mfa-1", method: "p1mfa", status: "pending", devices: [{ id: "dev-1", type: "OTP", label: "Demo device (OTP)" }] }, workspace: "t" });
@@ -523,6 +526,53 @@ describe("run observability (rule 27) on the Transfer gate tab", () => {
     expect(document.querySelector('tr[data-origin="response"]')).toBeTruthy();
     expect(screen.getByTestId("ro-lab-note")).toHaveTextContent(/reads no product logs, so there is nothing to re-read/);
     expect(screen.queryByText(/Re-read logs/)).toBeNull();
+  }, 20000);
+
+  it("a push the agent finds unanswered re-reads the record once: the server records the lapse on a poll, which is not a write", async () => {
+    override.runObs = () => ({ ok: true, status: 200, json: async () => ROWS("mock", "simulated") });
+    render(<App />);
+    await userEvent.click(await screen.findByText("PUSH: $150 approved with a PingID push on the phone"));
+    await screen.findByTestId("push-modal");
+    await waitFor(() => expect(reads().length).toBeGreaterThanOrEqual(2)); // the call, then the push that was sent
+    const before = reads().length;
+    override.pushFailed = true;
+    await waitFor(() => expect(screen.getByTestId("push-wait")).toHaveTextContent(/timed out or failed/), { timeout: 5000 });
+    await waitFor(() => expect(reads().length).toBeGreaterThan(before));
+    const after = reads().length;
+    await new Promise((r) => setTimeout(r, 2500));
+    expect(reads().length).toBe(after);
+  }, 20000);
+
+  it("the retry after a human beat is marked X-Hmlab-Retry, and the first call is not", async () => {
+    await ready();
+    await userEvent.click(await screen.findByTestId("consent-approve"));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/api/transfer").length).toBe(2));
+    const [first, retry] = calls.filter((c) => c.url === "/api/transfer");
+    expect(first.opts.headers["X-Hmlab-Retry"]).toBeUndefined();
+    expect(retry.opts.headers["X-Hmlab-Retry"]).toBe("1");
+  }, 15000);
+
+  it("Real: the automatic retry that the gateway holds again adds nothing, so it does not ask for the record again; the first call and an answer that added a row do", async () => {
+    override.runObs = () => ({ ok: true, status: 200, json: async () => ROWS("real", "response") });
+    await realReady();
+    override.stillHeld = true;
+    await userEvent.click(screen.getByText("PRIVILEGE: $150 held for PingID approval"));
+    await userEvent.click(screen.getByTestId("real-call"));
+    await screen.findByTestId("ro-table");
+    const before = reads().length;
+    await waitFor(() => expect(screen.getByTestId("real-waiting")).toHaveTextContent(/1 so far/), { timeout: 9000 });
+    expect(calls.filter((c) => c.url === "/api/privilege/real/call").length).toBeGreaterThanOrEqual(2);
+    expect(reads().length).toBe(before);
+  }, 25000);
+
+  it("Real: a reply that came back after Reset is said so on the panel, not shown as 'no run yet'", async () => {
+    override.runObs = () => ({ ok: true, status: 200, json: async () => ROWS("real", "response") });
+    await realReady();
+    override.afterReset = true;
+    await userEvent.click(screen.getByText("PRIVILEGE: $150 held for PingID approval"));
+    await userEvent.click(screen.getByTestId("real-call"));
+    expect(await screen.findByTestId("ro-after-reset")).toHaveTextContent(/arrived after Reset/);
+    expect(reads().length).toBe(0);
   }, 20000);
 
   it("Real: a call the lab refused before making it (busy) began no run; one that got no reply did (the server reads it)", async () => {

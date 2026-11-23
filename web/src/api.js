@@ -1,4 +1,4 @@
-import { workspaceFetch } from "./workspace";
+import { announceStep, workspaceFetch } from "./workspace";
 
 export async function getJson(url) {
   const r = await workspaceFetch(url, { method: "GET" });
@@ -26,9 +26,11 @@ export async function setMode(source) {
 
 // POST /api/transfer: one agent tool call through the transfer gate. 428 (a human beat is
 // required) and 403 (deny) are DATA here, not errors.
-export async function runTool(payload, { approvalId = null } = {}) {
-  // The retry of a call a Privilege gateway held carries the approval id in X-Procyon-Approval-Id.
-  const r = await workspaceFetch("/api/transfer", { method: "POST", body: JSON.stringify(payload), ...(approvalId ? { headers: { "X-Procyon-Approval-Id": approvalId } } : {}) });
+export async function runTool(payload, { approvalId = null, retry = false } = {}) {
+  // The retry of a call a Privilege gateway held carries the approval id in X-Procyon-Approval-Id. Any retry after a human beat is marked
+  // X-Hmlab-Retry (rule 27), so a retry the gate blocks again, with nothing to present, still joins the run that holds the approver's answer.
+  const headers = { ...(approvalId ? { "X-Procyon-Approval-Id": approvalId } : {}), ...(retry ? { "X-Hmlab-Retry": "1" } : {}) };
+  const r = await workspaceFetch("/api/transfer", { method: "POST", body: JSON.stringify(payload), ...(Object.keys(headers).length ? { headers } : {}) });
   let body = {};
   try { body = await r.json(); } catch { /* not JSON */ }
   return { ok: r.ok, status: r.status, body };
@@ -40,7 +42,10 @@ export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
 
 // PingID push (mock): fire the push, poll until the phone answers, and (the mock phone) answer it.
 export const startPush = (payload) => postJson("/api/mfa/push", payload);
-export const pollPush = (id) => getJson(`/api/mfa/poll/${encodeURIComponent(id)}`);
+// Rule 27: the server records a lapse when a poll first finds it, so the first poll that reports one tells the panel to read its record again (once per id).
+const lapseSeen = new Set();
+const lapseAnswer = (id, answer, word) => { if (answer?.status === word && !lapseSeen.has(id)) { lapseSeen.add(id); announceStep(); } return answer; };
+export const pollPush = (id) => getJson(`/api/mfa/poll/${encodeURIComponent(id)}`).then((a) => lapseAnswer(id, a, "failed"));
 export const respondPush = (id, decision) => postJson(`/api/mfa/push/${encodeURIComponent(id)}/respond`, { decision });
 
 // PingID setup wizard: the measured enrolment chain, per workspace.
@@ -53,14 +58,14 @@ export const respondConsent = (payload) => postJson("/api/consent/respond", payl
 
 // CIBA (UC22): bc-authorize, poll, and the out-of-band approve/deny from the phone panel.
 export const bcAuthorize = (payload) => postJson("/api/ciba/bc-authorize", payload);
-export const pollCiba = (authReqId) => getJson(`/api/ciba/poll/${encodeURIComponent(authReqId)}`);
+export const pollCiba = (authReqId) => getJson(`/api/ciba/poll/${encodeURIComponent(authReqId)}`).then((a) => lapseAnswer(authReqId, a, "expired"));
 export const respondCiba = (payload) => postJson("/api/ciba/respond", payload);
 // Demo knob: let a pending request expire now instead of waiting out the TTL.
 export const expireCiba = (authReqId) => postJson("/api/ciba/expire", { authReqId });
 export const pendingCiba = () => getJson("/api/ciba/pending");
 
-async function postJson(url, payload) {
-  const r = await workspaceFetch(url, { method: "POST", body: JSON.stringify(payload) });
+async function postJson(url, payload, opts = {}) {
+  const r = await workspaceFetch(url, { method: "POST", body: JSON.stringify(payload), ...opts });
   let body = {};
   try { body = await r.json(); } catch { /* not JSON */ }
   return { ok: r.ok, status: r.status, body };
@@ -69,7 +74,12 @@ async function postJson(url, payload) {
 export const resetWorkspace = () => workspaceFetch("/api/reset", { method: "POST", body: "{}" }).then((r) => r.ok);
 
 // Real (owner-run): one real tools/call to the Privilege gateway configured in the lab's .env; approvalId makes it the retry. Structured JSON on every outcome.
-export const callRealPrivilege = (approvalId = null) => postJson("/api/privilege/real/call", approvalId ? { approvalId } : {});
+// The answer says whether it added to the run's record (runObservability.recorded): a retry that is held again adds nothing, so only an answer that did asks the panel to read again.
+export async function callRealPrivilege(approvalId = null) {
+  const r = await postJson("/api/privilege/real/call", approvalId ? { approvalId } : {}, { announce: false });
+  if (r.body?.runObservability?.recorded) announceStep();
+  return r;
+}
 
 // The Privilege console's HITL Requests (mock): list what is held, and decide one. Approving needs a PingID confirmation.
 export const getPrivilegeQueue = () => getJson("/api/privilege/hitl");
