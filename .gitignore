@@ -7,3 +7,5 @@ coverage/
 .DS_Store
 .data/
 customer.config.json
+video/assets/
+video/out/
