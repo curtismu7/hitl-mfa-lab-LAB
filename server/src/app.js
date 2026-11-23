@@ -24,6 +24,8 @@ import { PRIVILEGE, PrivilegeError } from './privilege.js';
 import { PushError } from './push.js';
 import { WIZARD_STEPS, isWizardComplete } from './pingid.js';
 import { createWorkspaces, workspaceFrom } from './workspaces.js';
+import { RunObsError } from './runObservability.js';
+import { beat, buildRunRecord, createRunLog, observeNoReply, observeReal, observeTransfer } from './runLog.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -36,6 +38,7 @@ export function createApp({
   workspaces = createWorkspaces({ bands: DEFAULT_BANDS }),
   challenges = [],
   env = process.env,
+  runLogWrite, runLogClock, // where the one-line-per-decision output goes (stdout by default), and the clock that stamps it (tests move it)
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -50,6 +53,28 @@ export function createApp({
   // Rule 19: the mode is runtime server state. Real (owner-run) is the only thing that may leave the machine, and only to the one configured gateway:
   // choosing Real opens the netguard allowlist for that host, choosing Mock (or starting in Mock) closes it again.
   const real = createPrivilegeReal({ env });
+  // Rule 27: each decision is stamped once and written as one stdout line (run-observability: runLog.js). A recorder that fails must never break the call it describes.
+  const runLog = createRunLog({ write: runLogWrite, clock: runLogClock });
+  // target: a workspace id, or the run store itself (a Real call keeps the store it started with, so a Reset while it is in flight orphans it and the late reply joins no run).
+  // Returns { runId, row }: the run the last event joined (null: none) and whether any event was kept as a row.
+  const obs = (target, source, events) => {
+    const seen = { runId: null, row: false };
+    for (const e of [events].flat()) {
+      if (!e) continue;
+      try {
+        const r = runLog.record(typeof target === 'string' ? workspaces.state(target).obs : target, source, e);
+        if (r.runId !== null) seen.runId = r.runId;
+        if (r.row) seen.row = true;
+      } catch (err) { process.stderr.write(`run-observability: ${err?.code || err?.name || 'error'}: ${String(err?.message).replace(/\s+/g, ' ').slice(0, 120)}\n`); }
+    }
+    return seen;
+  };
+  // What the lab tells the page about the run a real call belongs to (the page reads it instead of guessing): began = a run of this workspace
+  // holds it; recorded = it added a row (a repeat of the same hold adds none); afterReset = a Reset came while the call was in flight, so the
+  // reply is on stdout only and in no record.
+  const runInfo = (ws, store, seen) => (workspaces.state(ws).obs !== store
+    ? { began: false, recorded: false, afterReset: true }
+    : { began: seen.runId !== null, recorded: seen.row, afterReset: false });
   let source;
   try { source = modeFrom(env); } catch { source = 'mock'; } // the doctor already reports a bad MODE
   const applyMode = (next) => {
@@ -83,13 +108,22 @@ export function createApp({
   api.get('/privilege/real', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: source, retryHeader: PRIVILEGE.header, ...real.configView() }); });
   api.post('/privilege/real/call', async (req, res) => {
     if (source !== 'real') return res.status(409).json({ error: 'not_real_mode', message: 'Switch the header toggle to Real first: this call goes to a real gateway.' });
+    const ws = workspaceFrom(req);
+    if (!ws) return res.status(400).json({ error: 'bad_workspace' });
     const body = req.body;
     if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request', message: 'body must be a JSON object' });
+    const approvalId = body.approvalId === undefined || body.approvalId === null || body.approvalId === '' ? null : body.approvalId;
+    const store = workspaces.state(ws).obs;
     try {
-      const approvalId = body.approvalId === undefined || body.approvalId === null || body.approvalId === '' ? null : body.approvalId;
-      return res.json(await real.call({ approvalId }));
+      const verdict = await real.call({ approvalId });
+      const seen = obs(store, 'real', observeReal(verdict, { retry: approvalId !== null }));
+      return res.json({ ...verdict, runObservability: runInfo(ws, store, seen) });
     } catch (e) {
-      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, message: e.message, ...(e.trace ? { trace: e.trace } : {}) });
+      if (e instanceof RealError) {
+        // A call that got no reply began a run (it was made); every other refusal happened before any call, so no run began.
+        const seen = e.code === 'upstream_unreachable' ? obs(store, 'real', observeNoReply({ retry: approvalId !== null, why: e.message })) : { runId: null, row: false };
+        return res.status(e.status).json({ error: e.code, message: e.message, ...(e.trace ? { trace: e.trace } : {}), runObservability: runInfo(ws, store, seen) });
+      }
       throw e;
     }
   });
@@ -143,12 +177,13 @@ export function createApp({
     let block = null;
     let held = null;     // Privilege: the request this call just opened
     let approved = null; // Privilege: the approval this call presented
+    let chk = null;      // Privilege: the check of an approval id presented on a retry
     let decision = result.decision;
     if (result.decision === 'PERMIT' || result.decision === 'DENY') {
       // No receipt needed (or none can help).
     } else if (flags.stepUpRequired && declaredStepUp === 'privilege') {
       // A Privilege AI-gateway hold: 403 pending_approval until an approver decides (PingID-confirmed) and the retry presents the id.
-      const chk = v.privilege.check(presentedApproval, { tool, amount });
+      chk = v.privilege.check(presentedApproval, { tool, amount });
       if (chk.ok && v.privilege.consume(presentedApproval)) {
         receipt = presentedApproval;
         approved = chk.approval;
@@ -204,6 +239,9 @@ export function createApp({
     }
 
     workspaces.record(ws, { tool, amount, decision, reason: result.reason, receipt, blocked: block ? block.error : null });
+    const receiptKind = declaredStepUp === 'privilege' ? 'privilege' : declaredStepUp === 'pingid-push' ? 'push' : declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl';
+    // The page marks the retry it makes after a human beat (X-Hmlab-Retry): a retry the gate blocks again has no receipt to present, and must join its run.
+    obs(ws, 'mock', observeTransfer({ amount, result, decision, declaredStepUp, receipt, receiptKind, block, held, approved, presented: declaredStepUp === 'privilege' ? presentedApproval : null, marked: req.headers['x-hmlab-retry'] === '1', check: chk }));
     const trace = newTrace(req.headers.traceparent);
     const privilege = declaredStepUp === 'privilege' ? { held, approval: approved, header: PRIVILEGE.header, policyId: PRIVILEGE.policyId, reason: PRIVILEGE.reason } : null;
     const hops = buildHops({ trace, cast: castFor(req), decision, obligation, reason: result.reason, tool, amount, step_up_method: declaredStepUp || obligation?.step_up_method, receipt, ciba: null, privilege });
@@ -217,7 +255,7 @@ export function createApp({
     }
     return res.status(decision === 'DENY' ? 403 : 200).json({
       decision, reason: result.reason, tool, amount,
-      ...(receipt ? { receipt, receiptKind: declaredStepUp === 'privilege' ? 'privilege' : declaredStepUp === 'pingid-push' ? 'push' : declaredStepUp === 'ciba' ? 'ciba' : flags.stepUpRequired ? 'stepUp' : 'hitl' } : {}),
+      ...(receipt ? { receipt, receiptKind } : {}),
       ...(approved ? { approval: { id: approved.id, method: approved.method, status: 'used' } } : {}),
       bands, workspace: ws, traceId: trace.traceId, hops,
     });
@@ -239,6 +277,7 @@ export function createApp({
     if (!challenge || challenge.workspace !== ws || challenge.status !== 'pending') return res.status(404).json({ error: 'not_found' });
     challenge.status = body.decision;
     challenge.decidedBy = typeof body.respondedBy === 'string' ? body.respondedBy.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim().slice(0, 40) || 'presenter' : 'presenter';
+    obs(ws, 'mock', beat.consent({ id: challenge.id, amount: challenge.amount, decision: body.decision, by: challenge.decidedBy }));
     if (body.decision === 'approved') {
       const receipt = v.receipts.mint({ kind: 'hitl', amount: challenge.amount, tool: challenge.tool, taskId: challenge.id });
       return res.json({ challenge, receipt: { id: receipt.id, amountBound: receipt.amountBound, kind: receipt.kind }, workspace: ws });
@@ -257,6 +296,7 @@ export function createApp({
     const challenge = { id: `mfa-${Date.now().toString(36)}`, workspace: ws, amount, tool: 'create_transfer', status: 'pending', method: 'p1mfa', createdAt: Date.now() };
     challenges.push(challenge);
     if (challenges.length > LIMITS.challenges) challenges.shift();
+    obs(ws, 'mock', beat.mfaChallenge({ id: challenge.id, amount }));
     return res.json({ challenge: { id: challenge.id, method: challenge.method, status: challenge.status, devices: [{ id: 'dev-1', type: 'OTP', label: 'Demo device (OTP)' }] }, workspace: ws });
   }));
   api.post('/mfa/verify', withWorkspace((ws, req, res) => {
@@ -266,8 +306,9 @@ export function createApp({
     if (typeof body.otp !== 'string' || !body.otp) return res.status(400).json({ error: 'otp_required', detail: 'body.otp must be the demo code (123123)' });
     const challenge = challenges.find((c) => c.id === body.challengeId.slice(0, 64));
     if (!challenge || challenge.workspace !== ws || challenge.status !== 'pending') return res.status(404).json({ error: 'not_found' });
-    if (body.otp.trim() !== DEMO_OTP) return res.status(401).json({ error: 'bad_otp', detail: 'wrong code — the demo OTP is 123123' });
+    if (body.otp.trim() !== DEMO_OTP) { obs(ws, 'mock', beat.mfaCode({ id: challenge.id, ok: false })); return res.status(401).json({ error: 'bad_otp', detail: 'wrong code — the demo OTP is 123123' }); }
     challenge.status = 'verified';
+    obs(ws, 'mock', beat.mfaCode({ id: challenge.id, ok: true }));
     const v = workspaces.state(ws);
     const receipt = v.receipts.mint({ kind: 'stepUp', amount: challenge.amount, tool: challenge.tool, taskId: challenge.id });
     return res.json({ challenge: { id: challenge.id, status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
@@ -281,18 +322,24 @@ export function createApp({
     if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range: the approval is amount-bound' });
     const v = workspaces.state(ws);
     const challenge = v.push.start({ amount, tool: 'create_transfer', bindingMessage: typeof body.bindingMessage === 'string' ? body.bindingMessage : null });
+    obs(ws, 'mock', beat.pushSent({ id: challenge.id, amount }));
     return res.json({ challenge, workspace: ws });
   }));
   api.get('/mfa/poll/:id', withWorkspace((ws, req, res) => {
     const v = workspaces.state(ws);
-    return res.json({ ...v.push.poll(String(req.params.id).slice(0, 64), v.receipts), workspace: ws });
+    const id = String(req.params.id).slice(0, 64);
+    const r = v.push.poll(id, v.receipts);
+    if (r.status === 'failed' && v.push.get(id)?.status === 'expired') obs(ws, 'mock', beat.pushLapsed({ id }));
+    return res.json({ ...r, workspace: ws });
   }));
   api.post('/mfa/push/:id/respond', withWorkspace((ws, req, res) => {
     const body = req.body;
     if (body === null || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'bad_request' });
     const v = workspaces.state(ws);
     try {
-      return res.json({ challenge: v.push.respond(String(req.params.id).slice(0, 64), body.decision), workspace: ws });
+      const challenge = v.push.respond(String(req.params.id).slice(0, 64), body.decision);
+      obs(ws, 'mock', beat.pushAnswer({ decision: challenge.status, id: challenge.id }));
+      return res.json({ challenge, workspace: ws });
     } catch (e) {
       if (e instanceof PushError) return res.status(e.status).json({ error: e.code, detail: e.message });
       throw e;
@@ -307,11 +354,13 @@ export function createApp({
     if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range — the approval receipt is amount-bound' });
     const v = workspaces.state(ws);
     const r = v.ciba.bcAuthorize({ bindingMessage: typeof body.bindingMessage === 'string' ? body.bindingMessage : `Approve $${amount ?? ''} transfer`.trim(), amount, tool: 'create_transfer' });
+    obs(ws, 'mock', beat.cibaSent({ id: r.auth_req_id, amount }));
     return res.json({ ...r, workspace: ws });
   }));
   api.get('/ciba/poll/:authReqId', withWorkspace((ws, req, res) => {
     const v = workspaces.state(ws);
     const r = v.ciba.poll(req.params.authReqId, { receiptStore: v.receipts });
+    if (r.status === 'expired') obs(ws, 'mock', beat.cibaLapsed({ id: String(req.params.authReqId).slice(0, 64) }));
     return res.json({ ...r, workspace: ws });
   }));
   api.post('/ciba/respond', withWorkspace((ws, req, res) => {
@@ -321,6 +370,8 @@ export function createApp({
     if (body.decision !== 'approved' && body.decision !== 'denied') return res.status(400).json({ error: 'bad_decision', detail: "decision must be 'approved' or 'denied'" });
     const v = workspaces.state(ws);
     const r = body.decision === 'approved' ? v.ciba.approve(body.authReqId, { receiptStore: v.receipts }) : v.ciba.deny(body.authReqId);
+    const id = body.authReqId.slice(0, 64);
+    obs(ws, 'mock', r.status === 'expired' ? beat.cibaLapsed({ id }) : beat.cibaAnswer({ status: r.status, id }));
     return res.json({ ...r, workspace: ws });
   }));
   api.get('/ciba/pending', withWorkspace((ws, _req, res) => {
@@ -366,6 +417,7 @@ export function createApp({
       if (!known) return res.status(404).json({ error: 'not_found', status: 'unknown' });
       return res.status(409).json({ error: 'not_pending', status: known.status });
     }
+    obs(ws, 'mock', beat.cibaLapsed({ id: body.authReqId.slice(0, 64) }));
     return res.json({ status: 'expired', workspace: ws });
   }));
 
@@ -381,14 +433,32 @@ export function createApp({
     const v = workspaces.state(ws);
     try {
       const request = v.privilege.decide(String(req.params.id).slice(0, 64), { decision: body.decision, pingid: body.pingid && typeof body.pingid === 'object' && !Array.isArray(body.pingid) ? body.pingid : null });
+      obs(ws, 'mock', beat.hitl({ id: request.id, decision: body.decision, method: request.method }));
       return res.json({ request, workspace: ws });
     } catch (e) {
-      if (e instanceof PrivilegeError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      if (e instanceof PrivilegeError) {
+        // PingID not confirming the approver is a decision of the mock; every other refusal here is a malformed or late request, not a beat.
+        if (e.code === 'pingid_denied' || e.code === 'bad_passcode') obs(ws, 'mock', beat.pingidNotConfirmed({ id: String(req.params.id).slice(0, 64), why: e.code === 'pingid_denied' ? "No, it's not me" : 'wrong passcode' }));
+        return res.status(e.status).json({ error: e.code, detail: e.message });
+      }
       throw e;
     }
   }));
 
   api.get('/runs', withWorkspace((ws, _req, res) => res.json(workspaces.runs(ws))));
+  // Rule 27: what each layer left behind for the newest run of the CURRENT mode in this workspace (a run of the other mode is never returned).
+  // No run yet: 200 { record: null, message }. A failure: { error, message } JSON (rule 23).
+  api.get('/run-observability', withWorkspace(async (ws, _req, res) => {
+    const run = runLog.latest(workspaces.state(ws).obs, source);
+    if (!run) return res.json({ record: null, message: `No ${source === 'real' ? 'Real' : 'Mock'} run yet in this workspace: run a scenario.` });
+    try {
+      return res.json(await buildRunRecord({ run }));
+    } catch (e) {
+      if (e instanceof RunObsError) return res.status(e.status).json({ error: e.code, message: e.message });
+      process.stderr.write(`run-observability: ${e?.code || e?.name || 'error'}: ${String(e?.message).replace(/\s+/g, ' ').slice(0, 120)}\n`);
+      return res.status(500).json({ error: 'run_observability_failed', message: 'The run record could not be built.' });
+    }
+  }));
   // Reset clears this workspace's bands (back to defaults), receipts, challenges and runs.
   api.post('/reset', withWorkspace((ws, _req, res) => {
     workspaces.resetWorkspace(ws);

@@ -7,3 +7,4 @@
 - Tokens are MOCK-ISSUED by this app and shown raw for education; there is no real credential, signature or key anywhere. No EC keygen is used.
 - Story and posture text is data; hosts end in `.example`; ARNs use the obviously fake account id 000000000000.
 - No tenant, credential or customer identifier ships. `customer.config.json` only sets four display strings and is git-ignored.
+- Run observability (rule 27) reads no product logs: only the shared core is vendored (no readers file, no `fetch`, socket or file access for it), no `RUN_OBS_*` variable exists, and the compose file never mounts the Docker socket (a test pins all three). The lab's own decision lines go to stdout: every value is cut to safe characters and masked, and no token, key, code or approval id is in one.

@@ -4,6 +4,7 @@ import { createReceiptStore, createCibaStore } from './policy.js';
 import { createPrivilegeStore } from './privilege.js';
 import { createPushStore } from './push.js';
 import { emptyWizard } from './pingid.js';
+import { createRunStore } from './runLog.js';
 
 export const WORKSPACE_RE = /^[a-z0-9-]{1,40}$/;
 export const DEFAULT_WORKSPACE = 'default';
@@ -34,6 +35,7 @@ export function createWorkspaces({ max = 500, ttlMs = 60 * 60 * 1000, now = Date
     privilege: createPrivilegeStore({ now }),
     push: createPushStore({ now }),
     pingid: emptyWizard(),
+    obs: createRunStore(), // rule 27: this workspace's runs, per source (mock / real)
   });
   return {
     state(id) {

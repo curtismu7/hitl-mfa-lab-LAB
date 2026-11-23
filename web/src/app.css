@@ -120,6 +120,9 @@ details { margin: 6px 0; } summary { cursor: pointer; font-size: var(--font-size
 .gate-more[open] > summary { margin-bottom: 10px; }
 .gate-more .gate { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
 .gate-more .panel { background: var(--th-bg-inset); }
+/* Rule 27: the shared run-observability panel sits in one card under the Gate result; its note about what each lane holds follows it. */
+.gate-obs { min-width: 0; }
+.gate-obs .ro-lab-note { margin: 10px 0 0; }
 
 /* A call in flight (owner request 2026-11-19): the button that started it turns red and the
    scenario chips for the running scenario follow. The primary action keeps the shared Ping Red
