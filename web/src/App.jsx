@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, lazy, Suspense } from "react";
 import PolicyGate from "./components/PolicyGate";
 import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
@@ -6,9 +6,15 @@ import ShelfLink from "./components/ShelfLink";
 import VerifyMark from "./components/VerifyMark.jsx";
 import TopMenu from "./top-menu/TopMenu";
 import ReturnLink from "./return-link/ReturnLink.jsx";
+import StoryToggle, { storyKey } from "./story/StoryToggle.jsx";
+import { StoryBoundary } from "./StoryBoundary.jsx";
 import { readReturnContext } from "./return-link/returnTargets.js";
 import { scenarioFor, verticalFor } from "./handoffMap";
 import { getJson, resetWorkspace, setMode } from "./api";
+
+// Story mode is loaded only when the viewer switches it on, so the page in Demo mode does not pay for it.
+const StoryRoot = lazy(() => import("./StoryRoot.jsx"));
+export const STORY_PREFIX = "hmlab";
 
 export const TABS = [
   { id: "gate", label: "Transfer gate" },
@@ -40,6 +46,8 @@ export default function App() {
   const [tab, setTab] = useState(hashParts().tab);
   const [requested, setRequested] = useState(() => hashParts().scenario || scenarioFor(handoff));
   const [presenter, setPresenter] = useState(false);
+  const [storyOn, setStoryOn] = useState(false);
+  const [toggleKey, setToggleKey] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
   const [resetMsg, setResetMsg] = useState("");
 
@@ -67,6 +75,14 @@ export default function App() {
     const ok = await resetWorkspace().catch(() => false);
     setResetSignal((n) => n + 1);
     setResetMsg(ok ? "Reset: your workspace's bands, receipts and runs are back to defaults." : "Reset failed on the server; the view was reset.");
+    try { window.dispatchEvent(new Event("hmlab:reset")); } catch { /* no window */ }
+  }, []);
+
+  // Exit in the Story bar: back to Demo, remembered, and ?story=1 dropped from the address so a reload stays in Demo.
+  const leaveStory = useCallback(() => {
+    try { localStorage.setItem(storyKey(STORY_PREFIX), "demo"); } catch { /* storage blocked */ }
+    try { const u = new URL(window.location.href); if (u.searchParams.has("story")) { u.searchParams.delete("story"); window.history.replaceState(null, "", u); } } catch { /* no address to tidy */ }
+    setToggleKey((k) => k + 1);
   }, []);
 
   const switchMode = useCallback(async (next) => {
@@ -102,6 +118,7 @@ export default function App() {
           help={{ href: "https://github.com/curtismu7/hitl-mfa-lab-LAB#readme" }}
           version={info?.version || null}
           onReset={reset}
+          extra={<StoryToggle key={toggleKey} prefix={STORY_PREFIX} onChange={setStoryOn} />}
         >
           <ReturnLink app="hitl-mfa-lab" variant="header" />
           <ShelfLink />
@@ -129,6 +146,13 @@ export default function App() {
           )}
         </div>
       </main>
+      {storyOn && !presenter ? (
+        <StoryBoundary onExit={leaveStory}>
+          <Suspense fallback={null}>
+            <StoryRoot mode={info?.mode === "real" ? "real" : "mock"} onExit={leaveStory} prefix={STORY_PREFIX} />
+          </Suspense>
+        </StoryBoundary>
+      ) : null}
     </div>
   );
 }

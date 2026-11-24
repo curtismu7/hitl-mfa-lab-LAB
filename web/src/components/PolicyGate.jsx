@@ -570,7 +570,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
         <h2 id="sc-h"><span className="gate-step__n">1</span> Pick a scenario</h2>
         <div className="seg" role="group" aria-label="Scenario">
           {story.scenarios.map((s) => (
-            <button key={s.id} type="button" aria-pressed={s.id === id}
+            <button key={s.id} type="button" data-scenario={s.id} aria-pressed={s.id === id}
               className={running && s.id === id ? "running" : undefined}
               disabled={running}
               onClick={() => { setBeat(null); setId(s.id); if (onSelect) onSelect(s.id); runScenario(s.id); }}>{s.title}</button>

@@ -14,6 +14,7 @@ import { hostedFrom, modeFrom, realAvailableFrom, realConfigFrom } from './confi
 import { allowHost, clearAllowedHosts } from './netguard.js';
 import { RealError, createPrivilegeReal } from './privilegeReal.js';
 import { buildStory } from './story.js';
+import { storyResponse } from './storyRoute.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
 import {
   DEFAULT_BANDS, PolicyInputError, classifyObligations, createCibaStore, createReceiptStore,
@@ -90,6 +91,8 @@ export function createApp({
   api.get('/diagram', (req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
   // What this build is, for the banner and for verifying a deploy by content (not by a 200).
   api.get('/info', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ mode: source, source, simulated: true, hosted, realAvailable: realAvailableFrom(env), version: (() => { try { return JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version || null; } catch { return null; } })() }); });
+  // Story mode wording (shared/story/README.md): parsed once per file change; a wording problem is a 500 that names it and never a server path.
+  api.get('/story', (_req, res) => { res.set('Cache-Control', 'no-store'); const r = storyResponse(); res.status(r.status).json(r.body); });
   // Rule 19: the Mock/Real toggle. Exactly { source: "mock"|"real" }; 409 when Real is not configured.
   api.post('/mode', (req, res) => {
     const body = req.body;

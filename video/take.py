@@ -31,7 +31,8 @@ import json, os, re, signal, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import base64
-from captions import OPENING_SLIDE, CLOSING_SLIDE, STEPS, SLIDES
+import captions
+from story_bridge import overlay_script, slide_payload, hold_bubble, hold_slide
 
 WORK = Path(sys.argv[1] if len(sys.argv) > 1 else "take-work").resolve()
 MONITOR = os.environ.get("MONITOR", "medium")        # "medium" (an external monitor) or "laptop" (the built-in display)
@@ -51,6 +52,9 @@ WAIT_GO = os.environ.get("WAIT_GO") == "1"
 THEME = os.environ.get("THEME", "light")
 APP = os.environ.get("APP_URL", "http://127.0.0.1:7680")
 SCENARIO = os.environ.get("SCENARIO", "privilege-pingid")   # the lab's PRIVILEGE scenario chip
+# The wording comes from the RUNNING LAB (GET /api/story): one parser, one file, the video cannot drift from the live Story.
+LOCAL_CAPTIONS = Path(__file__).resolve().parent / "captions.md"
+OPENING_SLIDE, CLOSING_SLIDE, STEPS, SLIDES = captions.load(APP, local_file=LOCAL_CAPTIONS)
 # Real take: how long we keep polling while the owner approves the PingID push on their phone.
 APPROVAL_WAIT_S = int(os.environ.get("APPROVAL_WAIT_S", "180"))   # generous: a human is deciding
 POLL_S = 3.0                                                      # the lab's own retry cadence
@@ -123,121 +127,13 @@ def detect_capture_device(work):
         raise RuntimeError(f"calibration found the green marker on none of {candidates} - the window may be off-screen for this MONITOR preset")
     return best[0]
 
-OVERLAY = r"""
-(() => {
-  if (window.__cm) return;
-  const css = `
-  .cm-hl{position:fixed;z-index:2147483644;border:3px solid #ff3b57;border-radius:10px;box-shadow:0 0 0 9999px rgba(8,10,13,.28);pointer-events:none;transition:all .25s}
-  .cm-bub{box-sizing:border-box;position:fixed;z-index:2147483645;width:470px;background:#f7f8fc;color:#14202e;border:3px solid #e3002b;border-radius:20px;padding:14px 20px 14px 64px;font:17px/1.4 system-ui,sans-serif;box-shadow:0 14px 36px rgba(0,0,0,.55)}
-  .cm-bub .n{position:absolute;left:14px;top:14px;width:36px;height:36px;border-radius:50%;background:#e3002b;color:#fff;font:700 19px/36px system-ui;text-align:center}
-  .cm-bub h3{margin:0 0 4px;font-size:19px;color:#14202e !important;font-weight:800}
-  .cm-bub p{margin:0;color:#233044}
-  .cm-bub ul{margin:8px 0 0;padding:0;list-style:none}
-  .cm-bub li{margin:6px 0;padding:6px 9px;background:#e8ebf3;border-radius:6px;font:15px/1.5 ui-monospace,Menlo,monospace;color:#051727;font-weight:600;word-break:break-word;overflow-wrap:anywhere}
-  .cm-bub .of{position:absolute;right:14px;top:10px;font-size:12px;color:#5b667a}
-  .cm-tail{position:absolute;width:22px;height:22px;background:#f7f8fc;border:3px solid #e3002b;transform:rotate(45deg)}
-  .cm-pill{position:fixed;right:14px;bottom:12px;z-index:2147483646;background:#1d232b;color:#f2f4f7;border:1px solid #3a4350;border-radius:999px;padding:4px 14px;font:700 13px system-ui,sans-serif;pointer-events:none}
-  .cm-slide{box-sizing:border-box;position:fixed;z-index:2147483647;inset:0;display:flex;align-items:center;justify-content:center;background:#051727;font:17px/1.5 system-ui,sans-serif;padding:24px}
-  .cm-slide .card{box-sizing:border-box;width:min(1100px,94vw);max-height:92vh;overflow-y:auto;background:#0f2236;color:#f2f4f7;border:3px solid #e3002b;border-radius:24px;padding:32px 40px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
-  .cm-slide h1{margin:0 0 10px;font-size:28px;font-weight:800;color:#fff}
-  .cm-slide .lead{margin:0 0 22px;color:#c7d0dc;font-size:16px}
-  .cm-slide .cols{display:grid;grid-template-columns:1fr 1fr;gap:28px}
-  @media (max-width:760px){ .cm-slide .cols{grid-template-columns:1fr} }
-  .cm-slide .col h2{margin:0 0 8px;font-size:16px;color:#8fbcff}
-  .cm-slide .col.colb h2{color:#ffb4a8}
-  .cm-slide .col ul{margin:0;padding-left:20px}
-  .cm-slide .col li{margin:6px 0;font-size:15px}
-  .cm-slide .verdict{margin:22px 0 0;padding-top:16px;border-top:1px solid #2a3b52;font-weight:700;color:#fff;font-size:15px}`;
-  const root = () => document.documentElement;
-  const ensure = () => { if (!root() || document.getElementById('cm-style')) return; const st = document.createElement('style'); st.id = 'cm-style'; st.textContent = css; root().appendChild(st);
-    const pill = document.createElement('div'); pill.className = 'cm-pill'; pill.textContent = window.__pillText || 'LIVE RUN: real Privilege gateway, PingID push on the approver\u2019s phone'; root().appendChild(pill); };
-  document.addEventListener('DOMContentLoaded', ensure); ensure();
-  const els = []; const clear = () => { while (els.length) els.pop().remove(); };
-  window.__cm = { clear, slide(o) {
-    ensure(); clear();
-    const card = document.createElement('div'); card.className = 'card';
-    card.innerHTML = `<h1></h1><p class="lead"></p><div class="cols">
-      <div class="col cola"><h2></h2><ul></ul></div>
-      <div class="col colb"><h2></h2><ul></ul></div></div><p class="verdict"></p>`;
-    card.querySelector('h1').textContent = o.title;
-    card.querySelector('.lead').textContent = o.lead;
-    card.querySelector('.cola h2').textContent = o.cola.h;
-    card.querySelector('.cola ul').append(...o.cola.lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
-    card.querySelector('.colb h2').textContent = o.colb.h;
-    card.querySelector('.colb ul').append(...o.colb.lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
-    card.querySelector('.verdict').textContent = o.verdict;
-    card.style.maxHeight = Math.round(innerHeight * 0.88) + 'px';
-    const wrap = document.createElement('div'); wrap.className = 'cm-slide'; wrap.append(card);
-    root().appendChild(wrap); els.push(wrap);
-  }, photo(o) {
-    // Full-screen photo insert: the real PingID push, screenshotted on the approver's phone
-    // right after the run (standard: show the real evidence; label how it was captured).
-    ensure(); clear();
-    const wrap = document.createElement('div'); wrap.className = 'cm-slide';
-    const card = document.createElement('div'); card.className = 'card'; card.style.textAlign = 'center';
-    card.innerHTML = `<h1></h1><img class="ph" alt="" style="max-height:56vh;max-width:min(420px,80vw);border-radius:18px;margin:14px auto;display:block;border:2px solid #2a3b52">
-      <p class="lead" style="margin:10px 0 0"></p>`;
-    card.querySelector('h1').textContent = o.title;
-    const img = card.querySelector('img'); img.src = o.src;
-    card.querySelector('.lead').textContent = o.caption;
-    wrap.append(card); root().appendChild(wrap); els.push(wrap);
-  }, cap(o) {
-    ensure(); clear();
-    const vw = innerWidth, vh = innerHeight, W = 470, GAP = 26, M = 12;
-    const t = o.target ? document.querySelector(o.target) : null;
-    // Scroll the target's own panel so it is on screen before measuring it.
-    if (t) t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    const r = t ? t.getBoundingClientRect() : null;
-    if (r) { const h = document.createElement('div'); h.className = 'cm-hl'; h.style.cssText = `left:${r.left-5}px;top:${r.top-5}px;width:${r.width+10}px;height:${r.height+10}px`; root().appendChild(h); els.push(h); }
-    const b = document.createElement('div'); b.className = 'cm-bub';
-    b.innerHTML = `<span class="n"></span><span class="of"></span><h3></h3><p></p>` + (o.lines ? '<ul>' + o.lines.map(() => '<li></li>').join('') + '</ul>' : '');
-    b.querySelector('.n').textContent = o.n; b.querySelector('.of').textContent = o.n + ' of ' + o.total;
-    b.querySelector('h3').textContent = o.title; b.querySelector('p').textContent = o.text;
-    (o.lines || []).forEach((l, i) => { b.querySelectorAll('li')[i].textContent = l; });
-    b.style.visibility = 'hidden'; root().appendChild(b); els.push(b);
-    const H = b.getBoundingClientRect().height;
-    let left, top, side = null;
-    if (!r) { left = (vw - W) / 2; top = vh - H - 40; }
-    else {
-      const fits = { right: r.right + GAP + W + M <= vw, left: r.left - GAP - W >= M, below: r.bottom + GAP + H + M <= vh, above: r.top - GAP - H >= M };
-      const order = o.prefer ? [o.prefer, 'right', 'left', 'below', 'above'] : ['right', 'left', 'below', 'above'];
-      side = order.find((s) => fits[s]) || (vw - r.right > r.left ? 'right' : 'left');
-      if (side === 'right') { left = r.right + GAP; top = r.top + r.height / 2 - H / 2; }
-      else if (side === 'left') { left = r.left - GAP - W; top = r.top + r.height / 2 - H / 2; }
-      else if (side === 'below') { left = r.left + r.width / 2 - W / 2; top = r.bottom + GAP; }
-      else { left = r.left + r.width / 2 - W / 2; top = r.top - GAP - H; }
-    }
-    left = Math.max(M, Math.min(vw - W - M, left)); top = Math.max(M, Math.min(vh - H - M, top));
-    b.style.left = left + 'px'; b.style.top = top + 'px'; b.style.visibility = 'visible';
-    if (r && side) {
-      const tail = document.createElement('div'); tail.className = 'cm-tail';
-      const cx = Math.max(left + 26, Math.min(left + W - 26, r.left + r.width / 2)), cy = Math.max(top + 26, Math.min(top + H - 26, r.top + r.height / 2));
-      if (side === 'right') { tail.style.left = '-13px'; tail.style.top = (cy - top - 11) + 'px'; tail.style.borderRight = 'none'; tail.style.borderTop = 'none'; }
-      if (side === 'left') { tail.style.right = '-13px'; tail.style.top = (cy - top - 11) + 'px'; tail.style.borderLeft = 'none'; tail.style.borderBottom = 'none'; }
-      if (side === 'below') { tail.style.top = '-13px'; tail.style.left = (cx - left - 11) + 'px'; tail.style.borderBottom = 'none'; tail.style.borderRight = 'none'; }
-      if (side === 'above') { tail.style.bottom = '-13px'; tail.style.left = (cx - left - 11) + 'px'; tail.style.borderTop = 'none'; tail.style.borderLeft = 'none'; }
-      b.appendChild(tail);
-    }
-  } };
-})();
-"""
+
 TOTAL = 10   # numbered caption bubbles, same count in sample and real takes
 
-def hold(text, extra=0.0):
-    return max(5.0, len(text.split()) * 0.30 + 2.2) + extra
-
-def slide_payload(cfg):
-    return dict(title=cfg["title"], lead=cfg["lead"],
-                cola=dict(h=cfg["col_a_heading"], lines=cfg["col_a_lines"]),
-                colb=dict(h=cfg["col_b_heading"], lines=cfg["col_b_lines"]),
-                verdict=cfg["verdict"])
-
-def slide_hold_text(cfg):
-    return " ".join([cfg["lead"], *cfg["col_a_lines"], *cfg["col_b_lines"], cfg["verdict"]])
-
-def hold_slide(cfg, extra=0.0, cap=30.0):
-    # A two-column slide is read, not narrated: about 4 words a second, floor 8 s, ceiling so no slide drags.
-    return min(cap, max(8.0, len(slide_hold_text(cfg).split()) * 0.25 + 3.0)) + extra
+# The pop-up code and the hold formulas are the shared Story code (story_bridge.py): the video and the live Story cannot drift.
+def page_slide(cfg):
+    """captions.py's flat slide -> the shared overlay's shape (an image comes from the local gitignored assets folder)."""
+    return slide_payload(cfg, Path(__file__).resolve().parent / "assets")
 
 def first_sentence(s, limit=150):
     s = (s or "").strip().split("\n")[0]
@@ -269,7 +165,7 @@ def main():
             **({"record_video_dir": str(WORK / "pw-video"), "record_video_size": {"width": WIN_W, "height": 900}} if RECORD_PW else {}),
             args=[f"--window-position={WIN_X},{WIN_Y}", f"--window-size={WIN_W},{WIN_H}", "--no-first-run", "--no-default-browser-check"])
         ctx.add_init_script("window.__pillText = " + json.dumps("SAMPLE: mock gateway and mock phone, not a real run" if SAMPLE else None) + ";")
-        ctx.add_init_script(OVERLAY)
+        ctx.add_init_script(overlay_script())
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(APP + "/"); page.wait_for_selector("[data-testid=mode-badge]")
         page.select_option("#theme-select", THEME) if page.locator("#theme-select").count() else None
@@ -317,18 +213,21 @@ def main():
             if REHEARSE and shots:
                 page.wait_for_timeout(300); Path(shots).mkdir(parents=True, exist_ok=True)
                 page.screenshot(path=str(Path(shots) / f"step-{n:02d}.png"))
-            page.wait_for_timeout(int((secs if secs is not None else hold(text + " ".join(lines or []))) * 1000 * (0.04 if REHEARSE else 1)))
+            # The hold is the shared formula, evaluated in the page (Normal speed IS the live Story's Normal speed).
+            secs_eff = secs if secs is not None else hold_bubble(page, text + " ".join(lines or []))
+            page.wait_for_timeout(int(secs_eff * 1000 * (0.04 if REHEARSE else 1)))
 
         def show_slide(cfg, extra=0.0, name="slide", cap=30.0):
-            page.evaluate("o => window.__cm.slide(o)", slide_payload(cfg))
+            payload = page_slide(cfg)
+            page.evaluate("o => window.__cm.slide(o)", payload)
             if REHEARSE and shots:
                 page.wait_for_timeout(300); Path(shots).mkdir(parents=True, exist_ok=True)
                 page.screenshot(path=str(Path(shots) / f"{name}.png"))
-            total_ms = int(hold_slide(cfg, extra=extra, cap=cap) * 1000 * (0.04 if REHEARSE else 1))
+            # The shared hold formula, evaluated in the page (owner rule 2026-11-22: no slide is held longer than 10 s; the take's old caps are gone with them).
+            total_ms = int(hold_slide(page, payload) * 1000 * (0.04 if REHEARSE else 1))
             pre_ms = min(6000, int(total_ms * 0.45))
             page.wait_for_timeout(pre_ms)
-            page.evaluate("""() => { const c = document.querySelector('.cm-slide .card');
-                if (c && c.scrollHeight > c.clientHeight + 4) c.scrollTo({top: c.scrollHeight - c.clientHeight, behavior: 'smooth'}); }""")
+            page.evaluate("() => window.__cm.scrollSlide()")   # the shared overlay scrolls a tall card to its verdict
             page.wait_for_timeout(max(0, total_ms - pre_ms))
 
         # The real PingID push, screenshotted on the approver's phone right after the run.
@@ -340,7 +239,11 @@ def main():
             if not PHONE_SHOT.exists():
                 log("no phone screenshot at", PHONE_SHOT, "— skipping the phone insert (the caption slides carry the moment)")
                 return False
-            page.evaluate("""o => window.__cm.photo(o)""", dict(title=title, caption=caption, src=PHONE_SHOT.as_uri()))
+            # The shared overlay's image slide: the photo beside the caption (slide_payload reads the file from the gitignored assets folder).
+            payload = slide_payload(dict(image="phone-push.png", wide=True, header=None, title=title, lead=caption,
+                                         col_a_heading="", col_a_lines=[], col_b_heading="", col_b_lines=[], verdict=""),
+                                    Path(__file__).resolve().parent / "assets")
+            page.evaluate("o => window.__cm.slide(o)", payload)
             if REHEARSE and shots:
                 page.wait_for_timeout(300); Path(shots).mkdir(parents=True, exist_ok=True)
                 page.screenshot(path=str(Path(shots) / f"{name}.png"))
@@ -389,7 +292,7 @@ def main():
             show_slide(SLIDES["real_vs_sim"], extra=2.0, name="slide-real-vs-sim", cap=44.0)
             page.evaluate("() => window.__cm.clear()")
             # ---- pick the PRIVILEGE scenario chip ----
-            chip = page.locator(f'[data-testid=step-pick] button:has-text("PRIVILEGE")').first
+            chip = page.locator('[data-testid=step-pick] [data-scenario=privilege-pingid]').first
             chip.scroll_into_view_if_needed()
             bubble(2, STEPS["sample_pick" if SAMPLE else "pick"]["title"], STEPS["sample_pick" if SAMPLE else "pick"]["text"],
                    "[data-testid=step-pick]", prefer="below", lines=["scenario: " + SCENARIO])

@@ -15,7 +15,7 @@
   "scripts": {
     "start": "npm start -w server",
     "build": "npm run build -w web",
-    "test": "npm test -w server && npm test -w web && node --test scripts/*.test.mjs",
+    "test": "npm test -w server && npm test -w web && node --test scripts/*.test.mjs test/*.test.ts",
     "doctor": "node scripts/doctor.mjs",
     "privilege-verify": "node scripts/privilege-verify.mjs",
     "reset": "node scripts/reset.mjs",
