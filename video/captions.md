@@ -1,12 +1,14 @@
 <!--
   All the WORDING for the HITL MFA (PingID approval) recording. Edit the text under each heading — nothing else needs to change.
-  take.py reads this file and fills in the live values (an instruction id, an amount, the HTTP status) around
-  whatever you write here; it never touches this file itself. SCRIPT.md is the source for every claim below.
+  take.py reads this file (through GET /api/story) and fills in the live values (an instruction id, an amount, the HTTP
+  status) around whatever you write here; it never touches this file itself. SCRIPT.md is the source for every claim below.
 
   Rules for editing safely:
+  - The first page has a "## Header" naming what the demo shows (rule 29): keep it on the Opening Slide and on sample_note
+    (the simulated run's first page).
   - Don't rename a "# Opening Slide" / "# Closing Slide" / "# Slide: <key>" / "# Step: <key>" heading, and don't rename
-    a "## Title" / "## Text" / "## Lead" / "## Verdict" / "## Column A: ..." / "## Column B: ..." heading.
-    Those names are how take.py finds the right piece of text. Editing the WORDS after them is always safe.
+    a "## Header" / "## Title" / "## Text" / "## Lead" / "## Verdict" / "## Column A: ..." / "## Column B: ..." heading.
+    Those names are how take.py and the shared parser find the right piece of text. Editing the WORDS after them is always safe.
   - A "## Column A: <label>" or "## Column B: <label>" heading's <label> IS shown on the slide as that
     column's own heading — edit it freely, just keep "Column A:" / "Column B:" at the start of the line.
   - Keep each bullet under a column on its own line starting with "- ".
@@ -17,6 +19,9 @@
 -->
 
 # Opening Slide
+
+## Header
+HITL MFA: the agent's sensitive action, approved on your phone
 
 ## Title
 Who approves the agent's sensitive action — a console, or your phone?
@@ -88,6 +93,9 @@ CIBA Core 1.0 is cited because the retry loop mirrors the spec's poll mode (repe
 # Slide: sample_note
 
 <!-- Sample take only. Never shown in the real take. -->
+
+## Header
+HITL MFA: the agent's sensitive action, approved on your phone
 
 ## Title
 SAMPLE: simulated, not a real run

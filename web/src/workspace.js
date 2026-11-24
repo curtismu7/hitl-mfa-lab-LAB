@@ -16,8 +16,17 @@ export function workspaceId() {
 // Rule 27: every write (a step, a human beat, a failed one too) tells the run-observability panel to read its record again. A read (a poll) does not,
 // and a caller that knows better passes announce: false and calls announceStep itself (the real call's automatic retry: a still-held answer adds nothing).
 export const announceStep = () => { try { window.dispatchEvent(new Event("hmlab-step")); } catch { /* no window */ } };
+// Story mode (shared/story/README.md): every write is also a run the Story engine can wait for. ok is false only when the request itself failed.
+export const announceRun = (ok) => {
+  try { window.dispatchEvent(new Event("hmlab:run-start")); } catch { /* no window */ }
+  return (r) => { try { window.dispatchEvent(new CustomEvent("hmlab:run-end", { detail: { ok: ok(r) } })); } catch { /* no window */ } return r; };
+};
 export const workspaceFetch = (url, { announce = true, ...opts } = {}) => {
   const p = fetch(url, { ...opts, headers: { "content-type": "application/json", ...(opts.headers || {}), "x-workspace": workspaceId() } });
-  if (announce && opts.method && opts.method !== "GET") p.then(announceStep, announceStep);
+  if (announce && opts.method && opts.method !== "GET") {
+    p.then(announceStep, announceStep);
+    // A 4xx answer here is DATA (a hold, a deny, a beat): the run ended and the story shows what the page shows. Only a request that never completed is a failed run.
+    p.then(announceRun(() => true), () => { try { window.dispatchEvent(new CustomEvent("hmlab:run-end", { detail: { ok: false } })); } catch { /* no window */ } });
+  }
   return p;
 };

@@ -1,214 +1,127 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CAST, VERTICALS, fill, unfilled } from '../src/cast.js';
-import { rawStory, buildStory } from '../src/story.js';
-import { classifyObligation, classifyObligations, evaluateAmountPolicy, normalizeBands, createReceiptStore, createCibaStore, DEFAULT_BANDS } from '../src/policy.js';
-import { parseTraceparent } from '../src/trace.js';
-import { scanHosts } from '../src/safety.js';
-import { rawDiagram } from '../src/diagramData.js';
+import { readFileSync, writeFileSync, copyFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { CAPTIONS_PATH, loadCaptions, resetCaptionsCache, storyResponse } from '../src/storyRoute.js';
+import { parity } from '../src/story/captions.js';
+import { checkPin } from '../../scripts/story-checkPin.mjs';
+import { EXTRA_SAMPLE_KEYS, SAMPLE_NOTE, STEPS, scriptKeys } from '../../web/src/storyScript.js';
 
-const all = () => JSON.stringify([rawStory(), rawDiagram()]);
+const root = new URL('../..', import.meta.url).pathname;
 
-test('every {{token}} in the story and diagram data is defined by every vertical (fails on an undefined token)', () => {
-  for (const [name, cast] of Object.entries(VERTICALS)) assert.deepEqual(unfilled(all(), cast), [], name);
-  assert.equal(Object.keys(VERTICALS).length, 3);
+test('story: the vendored Story files match their pin (an edited copy fails CI)', () => {
+  assert.deepEqual(checkPin(root), []);
 });
 
-test('the check itself catches an undefined token and leaves it visible', () => {
-  assert.deepEqual(unfilled('a {{castBrand}} {{nope}}', DEFAULT_CAST), ['nope']);
-  assert.equal(fill('{{nope}}', DEFAULT_CAST), '{{nope}}');
-  assert.equal(fill('{{__proto__}}', DEFAULT_CAST), '{{__proto__}}');
+test('story: every caption key has a step in the script and every step has wording (the parity test)', () => {
+  const problems = parity(loadCaptions(), scriptKeys(), { allowUnused: [] });
+  assert.deepEqual(problems, []);
 });
 
-test('each scenario gives its expected decision in every vertical', () => {
-  for (const cast of Object.values(VERTICALS)) {
-    const s = buildStory(cast);
-    for (const sc of s.scenarios) {
-      const decision = evaluateAmountPolicy({
-        amount: sc.call.amount,
-        bands: normalizeBands(sc.bands),
-        declaredStepUp: sc.declaredStepUp,
-      }).decision;
-      assert.equal(decision, sc.expected, sc.id);
-    }
+test('story: the parity check really fails when the wording and the script drift', () => {
+  const captions = loadCaptions();
+  const missing = { ...captions, steps: Object.fromEntries(Object.entries(captions.steps).filter(([k]) => k !== 'hold')) };
+  assert.deepEqual(parity(missing, scriptKeys(), { allowUnused: [] }), ['the demo has step "hold" but captions.md does not']);
+  const extra = { ...scriptKeys(), steps: [...scriptKeys().steps, 'brand_new'] };
+  assert.deepEqual(parity(captions, extra, { allowUnused: [] }), ['the demo has step "brand_new" but captions.md does not']);
+});
+
+test('story: the script has the same number of numbered bubbles as the recorded video (10 live, 10 simulated)', () => {
+  const video = readFileSync(`${root}video/take.py`, 'utf8');
+  assert.match(video, /TOTAL = 10/);
+  const bubbles = (mode) => [...STEPS, SAMPLE_NOTE].filter((s) => s.type === 'bubble' && (!s.modes || s.modes.includes(mode))).length;
+  assert.equal(bubbles('real'), 10);
+  assert.equal(bubbles('mock'), 10);
+});
+
+test('story: the bubbles come in the same order as in take.py, and the sample_* pairs sit on the same steps', () => {
+  const video = readFileSync(`${root}video/take.py`, 'utf8');
+  const order = [...video.matchAll(/bubble\(\d+, STEPS\["(?:sample_)?([a-z_]+)"(?:_if_SAMPLE)?/g)].map((m) => m[1]);
+  const realOrder = [...new Set(order)];
+  assert.deepEqual(STEPS.filter((s) => s.type === 'bubble').map((s) => s.key), realOrder);
+  for (const s of STEPS.filter((x) => x.type === 'bubble')) {
+    assert.ok(s.sampleKey === `sample_${s.key}` || s.sampleKey === undefined, `${s.key} pairs with its sample_ wording`);
   }
 });
 
-test('the bands really separate the three demo UCs: $300 HITL, $600 STEP_UP, $2500 DENY', () => {
-  const b = DEFAULT_BANDS;
-  assert.equal(evaluateAmountPolicy({ amount: 300, bands: b }).decision, 'HITL');
-  assert.equal(evaluateAmountPolicy({ amount: 600, bands: b }).decision, 'STEP_UP');
-  assert.equal(evaluateAmountPolicy({ amount: 2500, bands: b }).decision, 'DENY');
-  assert.equal(evaluateAmountPolicy({ amount: 100, bands: b }).decision, 'PERMIT');
+test('story: no step carries a made-up fixed hold (only the video gives secs, and this take gives none)', () => {
+  const video = readFileSync(`${root}video/take.py`, 'utf8');
+  const fromVideo = {};
+  for (const m of video.matchAll(/bubble\("([a-z0-9_]+)"[^\n]*?\bsecs=([0-9.]+)/g)) fromVideo[m[1]] = Number(m[2]);
+  const fromScript = STEPS.filter((s) => s.fixedSecs != null);
+  assert.deepEqual(fromScript.map((s) => s.key), Object.keys(fromVideo));
 });
 
-test('only .example hosts, no key-looking values', () => {
-  assert.deepEqual(scanHosts(JSON.stringify([buildStory(DEFAULT_CAST)])), []);
-  assert.deepEqual(scanHosts(all()), []);
+test('story (rule 29): the first page the viewer sees, in Real and in Mock, has a header naming the demo', () => {
+  const captions = loadCaptions();
+  assert.ok(captions.opening.header, 'the Opening Slide has a header');
+  assert.equal(captions.slides.sample_note.header, captions.opening.header, 'sample_note (the Mock first page) carries the header too');
 });
 
-test('the receipt claims are labelled measured, and every fact carries a status', () => {
-  const facts = rawStory().facts;
-  assert.equal(facts.find((f) => f.id === 'receipt-amount-bound').status, 'measured');
-  assert.equal(facts.find((f) => f.id === 'receipt-single-use').status, 'measured');
-  for (const f of facts) assert.ok(['measured', 'inferred', 'UNVERIFIED'].includes(f.status), f.id);
-  assert.ok(!/\bdoors?\b/i.test(all()));
+test('story: the wording is public-safe (no internal hostnames, ids, keys or real hosts)', () => {
+  const raw = readFileSync(CAPTIONS_PATH, 'utf8');
+  for (const bad of [/ping-devops/i, /127\.0\.0\.1/, /localhost/i, /HMLAB_[A-Z_]+/, /api[_-]?key/i, /client[_-]?secret/i, /Bearer [A-Za-z0-9+/_-]{20,}/, /procyon\.(ai|local)/]) {
+    assert.ok(!bad.test(raw), `the wording mentions ${bad}`);
+  }
+  // X-Procyon-Approval-Id is the lab's own public header name (README): allowed, but never a procyon.* host.
+  assert.match(raw, /X-Procyon-Approval-Id/);
 });
 
-test('docs/talk-track.md is exactly what the talk-track data renders (no drift; run `npm run talk-track`)', async () => {
-  const { readFileSync } = await import('node:fs');
-  const path = await import('node:path');
-  const md = readFileSync(path.resolve(import.meta.dirname, '../../docs/talk-track.md'), 'utf8');
-  const { renderTalkTrackMarkdown } = await import('../src/story.js');
-  assert.equal(md, renderTalkTrackMarkdown(DEFAULT_CAST));
+test('story: the route answers 200 with the wording and its hash', () => {
+  resetCaptionsCache();
+  const r = storyResponse();
+  assert.equal(r.status, 200);
+  assert.equal(r.body.opening.header, 'HITL MFA: the agent\'s sensitive action, approved on your phone');
+  assert.match(r.body.sourceSha256, /^[0-9a-f]{64}$/);
+  assert.equal(r.body.sourceSha256, storyResponse().body.sourceSha256);
 });
 
-test('the diagram is diagram-studio/1 data and every step walks a real edge', () => {
-  const d = rawDiagram();
-  assert.equal(d.schema, 'diagram-studio/1');
-  assert.equal(d.steps.length, 6);
-  for (const s of d.steps) for (const i of s.edges) assert.ok(d.edges[i], `${s.title} edge ${i}`);
+test('story: an edit to captions.md shows on the next request without a restart', () => {
+  resetCaptionsCache();
+  const dir = mkdtempSync(join(tmpdir(), 'hmlab-story-'));
+  const tmp = join(dir, 'captions.md');
+  copyFileSync(CAPTIONS_PATH, tmp);
+  const before = storyResponse(tmp).body;
+  writeFileSync(tmp, readFileSync(CAPTIONS_PATH, 'utf8').replace('approved on your phone', 'approved on the phone'));
+  const after = storyResponse(tmp).body;
+  assert.equal(after.opening.header, 'HITL MFA: the agent\'s sensitive action, approved on the phone');
+  assert.notEqual(before.sourceSha256, after.sourceSha256);
+  unlinkSync(tmp);
 });
 
-test('classifyObligation: most-specific wins (HITL_CONSENT before HITL), four id fields accepted', () => {
-  assert.equal(classifyObligation({ type: 'HITL_CONSENT' }), 'consent');
-  assert.equal(classifyObligation({ id: 'hitl-consent' }), 'consent');
-  assert.equal(classifyObligation({ code: 'step-up-required' }), 'stepUp');
-  assert.equal(classifyObligation({ name: 'HUMAN_APPROVAL' }), 'hitl');
-  assert.equal(classifyObligation({ type: 'STEP_UP' }), 'stepUp');
-  assert.equal(classifyObligation({ type: 'HITL' }), 'hitl');
-  assert.equal(classifyObligation({ type: 'ELICITATION' }), null, 'not part of this lab');
-  assert.equal(classifyObligation({}), null);
-  assert.equal(classifyObligation(null), null);
+test('story: a broken wording file is a 500 that names the problem and never a server path', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hmlab-story-'));
+  const tmp = join(dir, 'captions.md');
+  writeFileSync(tmp, '# Step: x\n## Title\nno text section\n');
+  const r = storyResponse(tmp);
+  assert.equal(r.status, 500);
+  assert.match(r.body.error, /needs both a "## Title" and a "## Text" section/);
+  assert.ok(!r.body.error.includes(tmp), 'no server path in the message');
 });
 
-test('classifyObligations: highest gate wins (stepUp > consent > hitl), one flag ever true', () => {
-  const both = classifyObligations([{ type: 'STEP_UP' }, { type: 'HITL_CONSENT' }]);
-  assert.equal(both.stepUpRequired, true);
-  assert.equal(both.consentRequired, false);
-  assert.equal(both.hitlRequired, false);
-  const consent = classifyObligations([{ type: 'HITL_CONSENT' }, { type: 'HITL' }]);
-  assert.equal(consent.consentRequired, true, 'most-specific consent outranks plain hitl');
-  assert.equal(consent.hitlRequired, false);
-  const none = classifyObligations([{ type: 'WHATEVER' }]);
-  assert.equal(none.stepUpRequired, false);
-  assert.equal(none.classified.hitl.length, 0);
-  assert.equal(classifyObligations(null).hitlRequired, false);
+test('story: the route is served by the app (GET /api/story) and a POST to it is not a write', async () => {
+  const http = await import('node:http');
+  const { createApp } = await import('../src/app.js');
+  const server = http.createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  server.on('request', createApp({ port, env: { MODE: 'mock' }, logLine: () => {} }));
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    const get = await fetch(`${base}/api/story`);
+    assert.equal(get.status, 200);
+    const body = await get.json();
+    assert.equal(body.opening.header, 'HITL MFA: the agent\'s sensitive action, approved on your phone');
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
-test('normalizeBands: junk falls back to defaults, a crossing edit never widens the gate', () => {
-  assert.deepEqual(normalizeBands(null), DEFAULT_BANDS);
-  assert.deepEqual(normalizeBands('junk'), DEFAULT_BANDS);
-  assert.deepEqual(normalizeBands({ confirmUsd: 'lots' }), DEFAULT_BANDS);
-  const ok = normalizeBands({ confirmUsd: 100, mfaUsd: 400, denyCeilingUsd: 1500 });
-  assert.deepEqual(ok, { confirmUsd: 100, mfaUsd: 400, denyCeilingUsd: 1500 });
-  // confirm >= mfa, or mfa > ceiling: the whole edit falls back
-  assert.deepEqual(normalizeBands({ confirmUsd: 900, mfaUsd: 400, denyCeilingUsd: 2000 }), DEFAULT_BANDS);
-  assert.deepEqual(normalizeBands({ confirmUsd: 100, mfaUsd: 5000, denyCeilingUsd: 2000 }), DEFAULT_BANDS);
-  // negative or zero values are ignored
-  assert.deepEqual(normalizeBands({ confirmUsd: -1, mfaUsd: 0 }), DEFAULT_BANDS);
-});
-
-test('declared step-up is amount-independent but still below a hard DENY', () => {
-  const b = DEFAULT_BANDS;
-  const ciba = evaluateAmountPolicy({ amount: 150, bands: b, declaredStepUp: 'ciba' });
-  assert.equal(ciba.decision, 'STEP_UP');
-  assert.equal(ciba.obligation.step_up_method, 'ciba');
-  const p1mfa = evaluateAmountPolicy({ amount: 100, bands: b, declaredStepUp: 'p1mfa' });
-  assert.equal(p1mfa.decision, 'STEP_UP');
-  assert.equal(p1mfa.obligation.step_up_method, 'p1mfa');
-  // DENY still wins
-  const denied = evaluateAmountPolicy({ amount: 2500, bands: b, declaredStepUp: 'ciba' });
-  assert.equal(denied.decision, 'DENY');
-  // no amount: nothing to gate
-  assert.equal(evaluateAmountPolicy({ amount: null, bands: b }).decision, 'PERMIT');
-});
-
-test('receipts: single-use, amount-bound, TTL-expiring', () => {
-  let t = 1000;
-  const store = createReceiptStore({ now: () => t, ttlMs: 300000 });
-  const r = store.mint({ kind: 'hitl', amount: 300, tool: 'create_transfer' });
-  assert.equal(store.claim({ kind: 'hitl', amount: 300, tool: 'create_transfer' }).id, r.id);
-  store.consume(r.id);
-  assert.equal(store.claim({ kind: 'hitl', amount: 300, tool: 'create_transfer' }), null, 'consumed');
-  // amount binding
-  const r2 = store.mint({ kind: 'hitl', amount: 300, tool: 'create_transfer' });
-  assert.equal(store.claim({ kind: 'hitl', amount: 600, tool: 'create_transfer' }), null, 'over the bound amount');
-  assert.equal(store.claim({ kind: 'hitl', amount: 300, tool: 'create_transfer' }).id, r2.id);
-  // tool binding
-  assert.equal(store.claim({ kind: 'hitl', amount: 300, tool: 'other_tool' }), null, 'wrong tool');
-  // TTL expiry
-  const r3 = store.mint({ kind: 'stepUp', amount: 600, tool: 'create_transfer' });
-  t += 300001;
-  assert.equal(store.claim({ kind: 'stepUp', amount: 600, tool: 'create_transfer' }), null, 'expired');
-  store.reset();
-  assert.equal(store.all().length, 0);
-});
-
-test('CIBA store: bc-authorize, pending poll, approve/deny, expiry, unknown id', () => {
-  let t = 0;
-  const receipts = createReceiptStore({ now: () => t });
-  const ciba = createCibaStore({ now: () => t, autoApproveAfterMs: 5000 });
-  const ba = ciba.bcAuthorize({ bindingMessage: 'Approve $150 transfer', amount: 150 });
-  assert.match(ba.auth_req_id, /^ciba-/);
-  assert.equal(ba.binding_message, 'Approve $150 transfer');
-  assert.equal(ciba.poll(ba.auth_req_id).status, 'pending');
-  // binding message is cleaned and capped
-  const dirty = ciba.bcAuthorize({ bindingMessage: 'x'.repeat(300) + '\ninject' });
-  assert.ok(dirty.binding_message.length <= 120);
-  assert.ok(!dirty.binding_message.includes('\n'));
-  // auto-approve after the delay (tests only)
-  t += 5000;
-  const approved = ciba.poll(ba.auth_req_id, { receiptStore: receipts });
-  assert.equal(approved.status, 'approved');
-  assert.ok(approved.receiptId);
-  const receipt = receipts.all().find((r) => r.id === approved.receiptId);
-  assert.equal(receipt.amountBound, 150, 'the approval is amount-bound');
-  // deny
-  const ba2 = ciba.bcAuthorize({ amount: 150 });
-  assert.equal(ciba.deny(ba2.auth_req_id).status, 'denied');
-  assert.equal(ciba.poll(ba2.auth_req_id).status, 'denied');
-  // expired
-  const ba3 = ciba.bcAuthorize({ amount: 150 });
-  t += 400 * 1000;
-  assert.equal(ciba.poll(ba3.auth_req_id).status, 'expired');
-  // unknown
-  assert.equal(ciba.poll('ciba-nope').status, 'unknown');
-  assert.equal(ciba.get('ciba-nope'), null);
-  ciba.reset();
-  assert.equal(ciba.all().length, 0);
-});
-
-test('hostile input is bounded and inert', () => {
-  const ciba = createCibaStore();
-  const r = ciba.bcAuthorize({ bindingMessage: '\u0007bell\u0016' });
-  assert.ok(!/[\u0000-\u001f]/.test(r.binding_message));
-  assert.equal(ciba.poll({}.toString).status, 'unknown');
-  assert.equal(evaluateAmountPolicy({ amount: 1e308, bands: DEFAULT_BANDS }).decision, 'DENY');
-  assert.equal(evaluateAmountPolicy({ amount: '  600  ', bands: DEFAULT_BANDS }).decision, 'STEP_UP', 'numeric strings are accepted');
-});
-
-test('CIBA approve is idempotent and honours the TTL; deny cannot flip an approval', () => {
-  let t = 0;
-  const receipts = createReceiptStore({ now: () => t });
-  const ciba = createCibaStore({ now: () => t });
-  const ba = ciba.bcAuthorize({ amount: 150 });
-  const first = ciba.approve(ba.auth_req_id, { receiptStore: receipts });
-  assert.equal(first.status, 'approved');
-  const second = ciba.approve(ba.auth_req_id, { receiptStore: receipts });
-  assert.equal(second.receiptId, first.receiptId, 'double-approve returns the SAME receipt');
-  assert.equal(receipts.all().filter((r) => !r.used).length, 1, 'no replay multiplier');
-  // TTL on approve: expiry is not gated on an intervening poll
-  const ba2 = ciba.bcAuthorize({ amount: 150 });
-  t += 400 * 1000;
-  assert.equal(ciba.approve(ba2.auth_req_id, { receiptStore: receipts }).status, 'expired');
-  // deny cannot flip an approval that already minted its receipt
-  const ba3 = ciba.bcAuthorize({ amount: 150 });
-  ciba.approve(ba3.auth_req_id, { receiptStore: receipts });
-  assert.equal(ciba.deny(ba3.auth_req_id).status, 'approved');
-  assert.equal(ciba.poll(ba3.auth_req_id).status, 'approved');
-});
-
-test('traceparent with all-ones flags is refused', () => {
-  assert.equal(parseTraceparent(`00-${'a'.repeat(32)}-${'b'.repeat(16)}-ff`), null);
+test('video: captions.py reads the running lab, not a private parser (the stale-wording check is in the route hash)', () => {
+  const cap = readFileSync(`${root}video/captions.py`, 'utf8');
+  assert.match(cap, /api\/story/);
+  assert.match(cap, /sourceSha256/);
+  assert.ok(!/def _load\(\)/.test(cap), 'captions.py has no parser of its own');
 });

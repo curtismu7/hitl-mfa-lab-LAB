@@ -7,5 +7,6 @@ import "./components/VerifyMark.css";
 import "./top-menu/top-menu.css";
 import "./tokens.css";
 import "./app.css";
+import "./story/story.css";
 
 createRoot(document.getElementById("root")).render(<App />);

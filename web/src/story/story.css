@@ -1,0 +1,19 @@
+/* Story controls: the Demo | Story toggle and the bar. Tokens only (override --story-* in the lab); light and dark safe; usable at 375px. No purple. */
+.story-toggle{display:inline-flex;border:1px solid var(--story-line,#4a5063);border-radius:999px;overflow:hidden;font:600 .8rem system-ui,sans-serif}
+.story-toggle button{appearance:none;border:0;background:transparent;color:inherit;padding:.3rem .8rem;cursor:pointer;font:inherit}
+.story-toggle button[aria-pressed="true"]{background:var(--story-accent,#e3002b);color:#fff}
+.story-toggle button:focus-visible,.story-bar button:focus-visible,.story-bar select:focus-visible{outline:2px solid var(--story-focus,#8fbcff);outline-offset:2px}
+.story-bar{position:fixed;right:14px;bottom:12px;z-index:2147483647;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;max-width:calc(100vw - 28px);box-sizing:border-box;padding:.45rem .6rem;border:1px solid var(--story-line,#3a4350);border-radius:14px;background:var(--story-bar-bg,#1d232b);color:var(--story-bar-fg,#f2f4f7);font:600 .82rem system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.story-bar button{appearance:none;border:1px solid var(--story-line,#4a5063);border-radius:.5rem;background:transparent;color:inherit;padding:.3rem .7rem;cursor:pointer;font:inherit}
+.story-bar button:hover:not(:disabled){background:rgba(255,255,255,.1)}
+.story-bar button:disabled{opacity:.45;cursor:default}
+.story-bar select{border:1px solid var(--story-line,#4a5063);border-radius:.5rem;background:transparent;color:inherit;padding:.25rem .4rem;font:inherit}
+.story-bar select option{color:#14202e}
+.story-speed{display:inline-flex;gap:.3rem;align-items:center}
+.story-msg{min-width:7rem;max-width:22rem;overflow-wrap:anywhere}
+/* Waiting on the viewer: bright red, a slow blink (well under 3 flashes a second). Reduced motion keeps the red and drops the blink. */
+.story-msg[data-your-turn="true"]{color:var(--story-your-turn,#ff2a2a);font-weight:800;animation:story-your-turn 1.6s ease-in-out infinite}
+@keyframes story-your-turn{0%,100%{opacity:1}50%{opacity:.25}}
+.story-chip{padding:.1rem .5rem;border:1px solid #d29a0e;border-radius:.35rem;color:#fde68a;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase}
+.story-warn{color:#fca5a5;font-size:.75rem}
+@media (prefers-reduced-motion:reduce){.story-hl{transition:none !important}.story-msg[data-your-turn="true"]{animation:none}}

@@ -41,3 +41,6 @@ services:
       start_interval: 2s
       timeout: 5s
       retries: 3
+    volumes:
+      # The Story wording is re-read on every request: an edit to captions.md shows without rebuilding the image.
+      - ./video/captions.md:/app/video/captions.md:ro
