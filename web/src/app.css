@@ -8,7 +8,7 @@ code { font-family: var(--font-mono); font-size: var(--font-size-2xs); }
 .shell-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 0 -16px; padding: 10px 20px;
   background: var(--box-dark); color: var(--on-box); border-bottom: 3px solid transparent; border-image: var(--accent-gradient) 1; }
 .shell-bar h1 { margin: 0; color: var(--on-box); font-size: var(--font-size-lg); }
-.shell-brand { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.02em; }
+.shell-brand  { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.02em; }
 .shell-logo { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--accent-gradient); color: var(--on-accent); font: 800 var(--font-size-xs) var(--font-mono); }
 .shell-badge { padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid transparent; background: var(--accent-gradient); color: var(--on-accent); font: 700 var(--font-size-xs) var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
 .shell-badge--real { background: var(--surface-2); color: var(--status-warn); border-color: var(--status-warn); }
