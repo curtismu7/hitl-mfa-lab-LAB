@@ -563,6 +563,17 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   }, [heldId, heldExpires, realWait?.stopped]);
 
   const cards = reelCards(run, issued);
+  // The phone is off camera: when the retry comes back executed with an approval id, the PingID push was approved on a real
+  // phone. A small confirmation modal records the moment (the lab only sees that the approval landed, not who approved).
+  const [pushConfirmed, setPushConfirmed] = useState(null); // { id }
+  const pushConfirmedSeen = useRef(false);
+  useEffect(() => {
+    if (run?.real && run?.receipt && !pushConfirmedSeen.current) {
+      pushConfirmedSeen.current = true;
+      setPushConfirmed({ id: run.receipt });
+    }
+    if (!run?.real) pushConfirmedSeen.current = false;
+  }, [run?.real, run?.receipt]);
 
   return (
     <div className="gate-flow">
@@ -625,6 +636,21 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
               </>
             )}
             {realMsg && <p className="field-error" role="alert" data-testid="real-msg">{realMsg}</p>}
+            {pushConfirmed && (
+              <FloatingDialog isOpen placement="right" onClose={() => setPushConfirmed(null)}
+                title="PingID push approved" testId="pingid-confirmed-modal" defaultWidth={520} defaultHeight={null} minHeight={200} footer={null}>
+                <div className="modal__card">
+                  <p data-testid="pingid-confirmed">
+                    <strong>The PingID push was approved.</strong> The approver confirmed it on their phone, the gateway accepted the retry with the
+                    approval id, and the transfer executed.
+                  </p>
+                  <p className="muted">Approval id: <code data-testid="pingid-confirmed-id">{pushConfirmed.id}</code> — single-use and amount-bound: this exact call ran once, and the id cannot pass again.</p>
+                  <div className="modal__actions">
+                    <button type="button" className="primary" data-testid="pingid-confirmed-dismiss" onClick={() => setPushConfirmed(null)}>Dismiss</button>
+                  </div>
+                </div>
+              </FloatingDialog>
+            )}
           </div>
         )}
         <Verdict run={run} />
