@@ -27,18 +27,20 @@ test('story: the parity check really fails when the wording and the script drift
   assert.deepEqual(parity(captions, extra, { allowUnused: [] }), ['the demo has step "brand_new" but captions.md does not']);
 });
 
-test('story: the script has the same number of numbered bubbles as the recorded video (10 live, 10 simulated)', () => {
+test('story: the script has the same number of numbered bubbles as the recorded video (12 live, 10 simulated)', () => {
   const video = readFileSync(`${root}video/take.py`, 'utf8');
-  assert.match(video, /TOTAL = 10/);
+  assert.match(video, /TOTAL = 12/);
   const bubbles = (mode) => [...STEPS, SAMPLE_NOTE].filter((s) => s.type === 'bubble' && (!s.modes || s.modes.includes(mode))).length;
-  assert.equal(bubbles('real'), 10);
+  assert.equal(bubbles('real'), 12);
   assert.equal(bubbles('mock'), 10);
 });
 
 test('story: the bubbles come in the same order as in take.py, and the sample_* pairs sit on the same steps', () => {
   const video = readFileSync(`${root}video/take.py`, 'utf8');
-  const order = [...video.matchAll(/bubble\(\d+, STEPS\["(?:sample_)?([a-z_]+)"(?:_if_SAMPLE)?/g)].map((m) => m[1]);
-  const realOrder = [...new Set(order)];
+  // The real branch's own order is what the script must match: cut the file at the real-take marker (the sample branch above
+  // shares the same STEPS["sample_x" if SAMPLE else "x"] strings and would otherwise shadow the real positions).
+  const realSection = video.slice(video.indexOf('# ---- the REAL take:'));
+  const realOrder = ['intro', ...[...realSection.matchAll(/bubble\(\d+, STEPS\["([a-z_]+)"/g)].map((m) => m[1])];
   assert.deepEqual(STEPS.filter((s) => s.type === 'bubble').map((s) => s.key), realOrder);
   for (const s of STEPS.filter((x) => x.type === 'bubble')) {
     assert.ok(s.sampleKey === `sample_${s.key}` || s.sampleKey === undefined, `${s.key} pairs with its sample_ wording`);
