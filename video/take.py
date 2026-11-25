@@ -371,6 +371,16 @@ def main():
                 trace_text = page.inner_text('[data-testid=gateway-trace]').strip()
                 m = re.search(r"ins_[A-Za-z0-9_-]+", trace_text)
                 instruction_id = m.group(0) if m else ""
+                if not instruction_id:
+                    # The trace panel renders the id asynchronously; give it a moment and read again before giving up (the
+                    # 2026-11-25 real take executed fine but this read came back empty and flagged the film not-ok).
+                    for _ in range(10):
+                        page.wait_for_timeout(1000)
+                        m = re.search(r"ins_[A-Za-z0-9_-]+", page.inner_text('[data-testid=gateway-trace]'))
+                        if m:
+                            instruction_id = m.group(0); break
+                    if instruction_id:
+                        log("instruction id (second read):", instruction_id)
                 log("real hold trace:", trace_text[:300]); log("instruction id:", instruction_id)
                 if "pending_approval" not in trace_text:
                     raise RuntimeError("the real call did not come back held (pending_approval missing from the trace); "
