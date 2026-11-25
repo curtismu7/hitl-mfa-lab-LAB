@@ -13,6 +13,10 @@ const REAL_STEP = 'privilege-pingid';   // the PRIVILEGE scenario chip, the one 
 
 export const STEPS = [
   { key: 'intro', type: 'bubble', trigger: 'load', target: '[data-testid=banner]', prefer: 'below', lines: 'banner1', sampleKey: 'sample_intro' },
+
+  // the real take's prologue: two mock use cases on the page's own gate, shown in the film (and in a live Real Story walk) before the Privilege door
+  { key: 'consent_video', type: 'bubble', trigger: 'load', target: '[data-testid=consent-modal]', prefer: 'left', modes: ['real'] },
+  { key: 'mfa_video', type: 'bubble', trigger: 'load', target: '[data-testid=mfa-modal]', prefer: 'left', modes: ['real'] },
   { key: 'pick', type: 'bubble', trigger: 'load', target: '[data-testid=step-pick]', prefer: 'below', lines: 'scenario', sampleKey: 'sample_pick',
     prompt: { press: { selector: `[data-testid=step-pick] [data-scenario=privilege-pingid]` } }, fixedSecs: null },
   { key: 'hold', type: 'bubble', trigger: 'run-done', target: { selector: '[data-testid=privilege-modal]', real: '[data-testid=gateway-trace] details.gw-ex' }, prefer: 'left', lines: 'hold', sampleKey: 'sample_hold' },

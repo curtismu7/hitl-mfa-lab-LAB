@@ -146,20 +146,40 @@ Held, not refused; approved where the person is; spent once. Privilege: Ping's r
 # Step: intro
 
 ## Text
-This is the HITL MFA lab. The banner says what is real: the gateway call and its policy are this demo's decision surface; the Privilege hold and the PingID confirmation are simulated here — nothing leaves this page.
+This is the HITL MFA lab, and it walks three ways an agent's sensitive action gets a human decision. First two, on this page's own gate: a consent modal, and device MFA with a one-time code. Then the third, the real one: the Privilege gateway's hold, confirmed with a PingID push on the approver's phone.
 
 ## Title
-The lab, and what it says is real
+Three ways a person decides
+
+---
+
+# Step: consent_video
+
+## Text
+Use case one — consent. The agent's $300 call clears the confirm bar but not the MFA bar, so the gate pauses it and surfaces a consent modal. A person reads what the agent is asking to do and approves — or refuses. The approval is a single-use receipt: it lets this one call proceed, once.
+
+## Title
+Use case 1 — consent: a human approves the ask
+
+---
+
+# Step: mfa_video
+
+## Text
+Use case two — step-up MFA. At $600 the call clears the MFA bar, and step-up outranks the consent gate: a modal asks for a one-time code from the person's device (the demo OTP is 123123, a labelled bypass). The code proves the human is present, and the policy re-evaluates to PERMIT.
+
+## Title
+Use case 2 — MFA: the person proves presence
 
 ---
 
 # Step: pick
 
 ## Text
-The agent calls a money-movement tool through the gateway. This is the PRIVILEGE scenario: one real tools/call to the gateway door configured in this lab, with a Bearer credential in the Authorization header — nothing unusual yet.
+Use case three — the real one. The agent calls a money-movement tool through the gateway. This is the PRIVILEGE scenario: one real tools/call to the gateway door configured in this lab, with a Bearer credential in the Authorization header — nothing unusual yet.
 
 ## Title
-The agent's call goes out
+Use case 3 — PingID through Privilege: the call goes out
 
 ---
 

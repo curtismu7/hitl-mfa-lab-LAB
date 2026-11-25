@@ -128,7 +128,7 @@ def detect_capture_device(work):
     return best[0]
 
 
-TOTAL = 10   # numbered caption bubbles, same count in sample and real takes
+TOTAL = 12   # numbered caption bubbles in the real take (the sample take numbers its own 10)
 
 # The pop-up code and the hold formulas are the shared Story code (story_bridge.py): the video and the live Story cannot drift.
 def page_slide(cfg):
@@ -355,8 +355,34 @@ def main():
                 result.update(mode="sample", hold_id=instruction_id, executed=verdict[:120])
                 ok = bool(instruction_id) and "PERMITTED" in verdict.upper()
             else:
-                # ---- the REAL take: one real call, then wait while the owner approves on their phone ----
-                bubble(2, STEPS["pick"]["title"], STEPS["pick"]["text"], "[data-testid=step-pick]", prefer="below",
+                # ---- the REAL take: two mock use cases on the page's own gate (consent, MFA OTP), then the real PingID call ----
+                def mock_chip(sid):
+                    c = page.locator(f'[data-testid=step-pick] [data-scenario={sid}]').first
+                    c.scroll_into_view_if_needed(); c.click()
+                    return c
+
+                # Use case 1 — consent: the modal asks, a human approves, the transfer runs.
+                mock_chip("consent-hitl")
+                page.wait_for_selector('[data-testid=consent-modal]', timeout=60000)
+                page.wait_for_timeout(600)
+                bubble(2, STEPS["consent_video"]["title"], STEPS["consent_video"]["text"], '[data-testid=consent-modal]', prefer="left")
+                page.click('[data-testid=consent-approve]')
+                page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
+                page.wait_for_timeout(1200)
+                page.evaluate("() => window.__cm.clear()")
+                # Use case 2 — MFA step-up: the modal asks for the one-time code; presence proven, policy re-evaluates to PERMIT.
+                mock_chip("mfa-step-up")
+                page.wait_for_selector('[data-testid=mfa-modal]', timeout=60000)
+                page.wait_for_timeout(600)
+                bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], '[data-testid=mfa-modal]', prefer="left",
+                       lines=["OTP: 123123 (the labelled demo bypass)"])
+                page.fill('[data-testid=mfa-otp]', "123123")
+                page.click('[data-testid=mfa-verify]')
+                page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
+                page.wait_for_timeout(1200)
+                page.evaluate("() => window.__cm.clear()")
+                # Use case 3 — the real Privilege + PingID walk.
+                bubble(4, STEPS["pick"]["title"], STEPS["pick"]["text"], "[data-testid=step-pick]", prefer="below",
                        lines=["tool: " + real.get("tool", "?"), "door: " + str(real.get("host", "?"))])
                 page.evaluate("() => window.__cm.clear()")
                 # The Real panel replaces the mock agent call while the PRIVILEGE scenario is selected in Real mode.
@@ -386,14 +412,14 @@ def main():
                     raise RuntimeError("the real call did not come back held (pending_approval missing from the trace); "
                                        "check the gateway policy before recording: " + trace_text[:200])
                 result["hold_id"] = instruction_id
-                bubble(3, STEPS["hold"]["title"], STEPS["hold"]["text"], '[data-testid=gateway-trace] details.gw-ex', prefer="left",
+                bubble(5, STEPS["hold"]["title"], STEPS["hold"]["text"], '[data-testid=gateway-trace] details.gw-ex', prefer="left",
                        lines=["HTTP 403 · -32600 · pending_approval"])
-                bubble(4, STEPS["instruction"]["title"], STEPS["instruction"]["text"], '[data-testid=real-approval]', prefer="below",
+                bubble(6, STEPS["instruction"]["title"], STEPS["instruction"]["text"], '[data-testid=real-approval]', prefer="below",
                        lines=["instruction id: " + (instruction_id or "(read it off the trace)")])
                 page.evaluate("() => window.__cm.clear()")
                 # The push: Privilege sent it to the approvers' phones when the hold was minted. The take WAITS:
                 # a generous poll of the same call (quiet retries, like the lab's own loop) while the owner decides.
-                bubble(5, STEPS["push"]["title"], STEPS["push"]["text"], '[data-testid=real-waiting]', prefer="below",
+                bubble(7, STEPS["push"]["title"], STEPS["push"]["text"], '[data-testid=real-waiting]', prefer="below",
                        lines=["the PingID push is on the approver's phone"])
                 approved = False
                 deadline = time.time() + APPROVAL_WAIT_S
@@ -429,19 +455,19 @@ def main():
                 page.wait_for_timeout(800)
                 verdict = page.inner_text('[data-testid=verdict]').strip()
                 log("real executed verdict:", verdict[:200])
-                bubble(6, STEPS["approve"]["title"], STEPS["approve"]["text"], '[data-testid=real-waiting]', prefer="below",
+                bubble(8, STEPS["approve"]["title"], STEPS["approve"]["text"], '[data-testid=real-waiting]', prefer="below",
                        lines=[f"approved on the phone after ~{int(APPROVAL_WAIT_S - (deadline - time.time()))}s of waiting"])
                 # The phone itself: the owner's screenshot of the real PingID push, taken right
                 # after the run (AirDrop to video/assets/phone-push.png). Skipped cleanly if absent.
                 show_photo("The push that arrived",
                            "The real PingID push on the approver's phone — screenshotted right after the run, not during the capture.")
-                bubble(7, STEPS["retry"]["title"], STEPS["retry"]["text"], '[data-testid=gateway-trace] details.gw-ex:last-of-type', prefer="left",
+                bubble(9, STEPS["retry"]["title"], STEPS["retry"]["text"], '[data-testid=gateway-trace] details.gw-ex:last-of-type', prefer="left",
                        lines=["X-Procyon-Approval-Id: " + (instruction_id or "?")])
-                bubble(8, STEPS["executed"]["title"], STEPS["executed"]["text"], '[data-testid=verdict]', prefer="below",
+                bubble(10, STEPS["executed"]["title"], STEPS["executed"]["text"], '[data-testid=verdict]', prefer="below",
                        lines=[first_sentence(verdict)])
                 page.evaluate("() => window.__cm.clear()")
                 # ---- the boundary: present the spent id again for a higher call; the gateway must hold it again ----
-                bubble(9, STEPS["boundary"]["title"], STEPS["boundary"]["text"], '[data-testid=real-approval]', prefer="below",
+                bubble(11, STEPS["boundary"]["title"], STEPS["boundary"]["text"], '[data-testid=real-approval]', prefer="below",
                        lines=["the same id, presented again: the gateway must not pass it"])
                 if page.locator('[data-testid=real-approval]').count():
                     page.fill('[data-testid=real-approval]', instruction_id)
@@ -456,7 +482,7 @@ def main():
                 if not boundary_ok:
                     log("WARNING: the boundary beat did not show a fresh hold; check the gateway's amount binding before claiming it")
                 page.evaluate("() => window.__cm.clear()")
-                bubble(10, STEPS["audit"]["title"], STEPS["audit"]["text"], '[data-testid=gateway-trace]', prefer="below")
+                bubble(12, STEPS["audit"]["title"], STEPS["audit"]["text"], '[data-testid=gateway-trace]', prefer="below")
                 result.update(mode="real", verdict=verdict[:200])
                 ok = approved and bool(instruction_id)
             page.evaluate("() => window.__cm.clear()")
