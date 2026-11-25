@@ -417,6 +417,27 @@ describe("Real mode (owner-run)", () => {
     expect(screen.getByText(/What Privilege did/i)).toBeInTheDocument();
     expect(JSON.parse(calls.filter((c) => c.url === "/api/privilege/real/call")[0].opts.body)).toEqual({});
   }, 15000);
+  it("when the retry executes, a modal confirms the PingID push was approved on the phone (the phone is off camera)", async () => {
+    await realReady();
+    expect(screen.queryByTestId("pingid-confirmed-modal")).toBeNull();
+    await userEvent.click(screen.getByTestId("real-call"));
+    await userEvent.click(await screen.findByTestId("real-retry"));
+    const modal = await screen.findByTestId("pingid-confirmed-modal");
+    expect(screen.getByTestId("pingid-confirmed")).toHaveTextContent(/push was approved/i);
+    expect(screen.getByTestId("pingid-confirmed")).toHaveTextContent(/on their phone/i);
+    expect(screen.getByTestId("pingid-confirmed-id")).toHaveTextContent("ins_real1");
+    await userEvent.click(screen.getByTestId("pingid-confirmed-dismiss"));
+    await waitFor(() => expect(screen.queryByTestId("pingid-confirmed-modal")).toBeNull());
+  }, 15000);
+  it("a held retry (the id was refused or the push not yet answered) shows no confirmation modal", async () => {
+    await realReady();
+    override.stillHeld = true;
+    await userEvent.click(screen.getByTestId("real-call"));
+    await userEvent.click(await screen.findByTestId("real-retry"));
+    await screen.findByTestId("real-msg");
+    expect(screen.queryByTestId("pingid-confirmed-modal")).toBeNull();
+    override.stillHeld = false;
+  }, 15000);
   it("after the owner approves in their console, the retry carries the id; PingID is shown as INFERRED, never as reported", async () => {
     await realReady();
     await userEvent.click(screen.getByTestId("real-call"));
