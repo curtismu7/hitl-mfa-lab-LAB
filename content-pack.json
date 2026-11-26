@@ -93,7 +93,7 @@
     {
       "id": "try-mfa-step-up",
       "label": "Scenario 2: MFA: $600 steps up to device MFA",
-      "description": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT.",
+      "description": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123, a simulated device, not a real PingOne MFA code), then the policy re-evaluates to PERMIT.",
       "group": "try-it",
       "action": {
         "type": "route",
@@ -121,7 +121,7 @@
     {
       "id": "try-pingid-push",
       "label": "Scenario 4: PUSH: $150 approved with a PingID push on the phone",
-      "description": "The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver's phone (\"Are you trying to sign on?\") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).",
+      "description": "The policy requires a PingID push for this agent call, whatever the amount. In this standalone beat the phone is an in-page mock and the push is simulated — the lab never calls PingID here (the PRIVILEGE scenario's approval push is the real tenant one). Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. In your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).",
       "group": "try-it",
       "action": {
         "type": "route",
@@ -220,7 +220,7 @@
     {
       "id": "S02",
       "title": "MFA: $600 steps up to device MFA",
-      "say": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT."
+      "say": "The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123, a simulated device, not a real PingOne MFA code), then the policy re-evaluates to PERMIT."
     },
     {
       "id": "S03",
@@ -230,7 +230,7 @@
     {
       "id": "S04",
       "title": "PUSH: $150 approved with a PingID push on the phone",
-      "say": "The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver's phone (\"Are you trying to sign on?\") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard)."
+      "say": "The policy requires a PingID push for this agent call, whatever the amount. In this standalone beat the phone is an in-page mock and the push is simulated — the lab never calls PingID here (the PRIVILEGE scenario's approval push is the real tenant one). Approve mints a single-use, amount-bound credit and the retry runs once, \"No, it's not me\" leaves it held. In your own PingOne environment the same push goes to a real phone (see the PingID setup wizard)."
     },
     {
       "id": "S05",

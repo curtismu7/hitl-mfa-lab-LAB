@@ -66,7 +66,7 @@ export function buildHops({ trace, cast, decision, obligation, reason, tool, amo
     );
   } else if (decision === 'STEP_UP' && step_up_method === 'pingid-push') {
     hops.push(
-      { n: 3, from: 'policy', to: 'idp', label: 'PingID: a push goes to the approver phone (mock)', traceparent: tp(ids[2]),
+      { n: 3, from: 'policy', to: 'idp', label: 'PingID: a push goes to the in-page mock phone (this beat is simulated)', traceparent: tp(ids[2]),
         request: `POST /mfa/push\ntraceparent: ${tp(ids[2])}\nbinding_message: Approve ${amount} transfer\nmethod: pingid-push`,
         response: '{ challenge: { id: <push id>, status: pending, expiresInSeconds: 60 } }' },
       { n: 4, from: 'idp', to: 'human', label: 'The approver answers on the phone', traceparent: tp(ids[3]),

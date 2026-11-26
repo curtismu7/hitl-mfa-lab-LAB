@@ -3,7 +3,7 @@ import { beatOf, diagramSteps, hopSteps, nextTrail, nowLine, reelCards } from ".
 
 const hop = (n, from, to, label) => ({ n, from, to, label });
 const NODES = ["agent", "policy", "consent", "mfa", "phone", "transfer"];
-const held = { decision: "STEP_UP", error: "mcp_step_up_required", step_up_method: "pingid-push", tool: "create_transfer", amount: 150, hops: [hop(1, "agent", "policy", "Agent attempts"), hop(2, "policy", "policy", "Gate evaluates"), hop(3, "policy", "idp", "PingID: a push goes to the approver phone (mock)"), hop(4, "idp", "human", "The approver answers on the phone"), hop(5, "agent", "idp", "Agent polls for the answer")] };
+const held = { decision: "STEP_UP", error: "mcp_step_up_required", step_up_method: "pingid-push", tool: "create_transfer", amount: 150, hops: [hop(1, "agent", "policy", "Agent attempts"), hop(2, "policy", "policy", "Gate evaluates"), hop(3, "policy", "idp", "PingID: a push goes to the in-page mock phone (this beat is simulated)"), hop(4, "idp", "human", "The approver answers on the phone"), hop(5, "agent", "idp", "Agent polls for the answer")] };
 const done = { decision: "PERMIT", receipt: "push-receipt-0001", receiptKind: "push", tool: "create_transfer", amount: 150, hops: [hop(1, "agent", "policy", "a"), hop(2, "policy", "policy", "b"), hop(3, "policy", "transfer", "Receipt presented")] };
 
 describe("the PingID push beat", () => {

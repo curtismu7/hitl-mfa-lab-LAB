@@ -62,7 +62,7 @@ export const SCENARIOS = [
     call: { tool: 'create_transfer', amount: 600 },
     declaredStepUp: null,
     expected: 'STEP_UP',
-    lesson: 'The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123), then the policy re-evaluates to PERMIT.',
+    lesson: 'The amount clears the MFA bar: step-up OUTRANKS the consent gate — the human must complete device MFA (demo OTP 123123, a simulated device, not a real PingOne MFA code), then the policy re-evaluates to PERMIT.',
   },
   {
     id: 'ciba-150',
@@ -80,7 +80,7 @@ export const SCENARIOS = [
     call: { tool: 'create_transfer', amount: 150 },
     declaredStepUp: 'pingid-push',
     expected: 'STEP_UP',
-    lesson: 'The policy requires a PingID push for this agent call, whatever the amount. A push goes to the approver\'s phone ("Are you trying to sign on?") and the agent polls; Approve mints a single-use, amount-bound credit and the retry runs once, "No, it\'s not me" leaves it held. Here the phone is a mock on the page; in your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).',
+    lesson: 'The policy requires a PingID push for this agent call, whatever the amount. In this standalone beat the phone is an in-page mock and the push is simulated — the lab never calls PingID here (the PRIVILEGE scenario\'s approval push is the real tenant one). Approve mints a single-use, amount-bound credit and the retry runs once, "No, it\'s not me" leaves it held. In your own PingOne environment the same push goes to a real phone (see the PingID setup wizard).',
   },
   {
     id: 'deny-ceiling',
@@ -128,8 +128,8 @@ export const TALK_TRACK = [
   { id: 'ciba', title: 'CIBA out-of-band', say: 'For a sensitive agent-initiated action the policy requests out-of-band approval: bc-authorize mints an auth_req_id, the user approves on their own device, the agent polls until approved. The demo amount is $150 on purpose — the trigger is the agent context, not the amount. A rogue agent cannot self-approve.' },
   { id: 'receipts', title: 'Receipts', say: 'Approvals are receipts, not vibes: single-use, consume-on-use, and amount-bound — approving $300 cannot later authorize $600. The MFA credit expires after five minutes.' },
   { id: 'otp', title: 'The demo OTP', say: 'The step-up code is 123123 — a labelled demo bypass so a presenter can complete MFA without a real device.' },
-  { id: 'pingid-push', title: 'PingID push on the phone', say: 'For a sensitive agent action the policy can require a PingID push. A push goes to the approver\'s phone and the agent polls for the answer. Approve mints a single-use credit bound to the amount; the retry runs once, and a second try is held again. "No, it\'s not me" leaves it held and issues nothing. In this lab the phone is a mock on the page; the push itself is not sent anywhere. What we measured for real is the sign-in step-up, not an API-driven push.' },
-  { id: 'privilege-pingid', title: 'Privilege hold, approved with PingID', say: 'Here the human beat runs through the Privilege gateway. An AI policy holds the agent\'s transfer: 403, pending_approval, an instruction id, nothing executed. The approver opens HITL Requests and approves; PingID makes them prove it is them with a push or a passcode. Only then does the agent\'s retry, carrying the approval id, go through, once, inside 90 seconds. All of it is simulated here, copied from a recording of a real Privilege tenant; on our own tenant that exact response and the PingID step are not yet confirmed.' },
+  { id: 'pingid-push', title: 'PingID push on the phone', say: 'For a sensitive agent action the policy can require a PingID push. A push goes to the approver\'s phone and the agent polls for the answer. Approve mints a single-use credit bound to the amount; the retry runs once, and a second try is held again. "No, it\'s not me" leaves it held and issues nothing. In this standalone beat the phone is an in-page mock and the push is simulated — the real tenant push is the PRIVILEGE scenario\'s approval. What we measured for real is the sign-in step-up, not an API-driven push.' },
+  { id: 'privilege-pingid', title: 'Privilege hold, approved with PingID', say: 'Here the human beat runs through the Privilege gateway. An AI policy holds the agent\'s transfer: 403, pending_approval, an instruction id, nothing executed. The approver opens HITL Requests and approves; PingID makes them prove it is them with a push or a passcode. Only then does the agent\'s retry, carrying the approval id, go through, once, inside 90 seconds. In Mock mode this beat is simulated, copied from a recording of a real Privilege tenant; in Real mode the hold, the approval and the PingID push are the tenant\'s own.' },
   { id: 'pingid', title: 'PingID is the real step-up engine behind this', say: 'This lab mocks the step-up, but the same contract runs for real with PingID: assign the MFA sign-on policy to the app (out of the box it exists but is assigned to nothing — the enrolment prompt never appears), the user signs in, scans the QR or types the pairing key, and the device shows ACTIVE. Worker-app API pairing is refused — WORKER apps get only the openid resource — so the sign-in path is the enrolment route. The next sign-in steps up: password, push, approve, code. Measured end to end 2026-11-18.' },
   { id: 'unverified', title: 'What we do not claim', say: 'The mock bands and challenge values are demo values; the decision contract follows what we enforced live. No real push infrastructure is simulated beyond the approval panel.' },
   { id: 'close', title: 'Close', say: 'Reset clears your workspace: bands, challenges, receipts and runs. Nothing was sent anywhere.' },

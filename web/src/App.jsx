@@ -26,7 +26,7 @@ export const TABS = [
 const TAIL = "Nothing here calls a real gateway, identity provider or tenant.";
 export const BANNER_UNKNOWN = `SIMULATED / HOSTED SIMULATION: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
 const BANNER_LOCAL = `SIMULATED: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
-const BANNER_REAL = `REAL MODE: the PRIVILEGE scenario sends a real tools/call to the Privilege gateway configured in this lab's .env and shows its real answer; the approval is yours, in the Privilege console with PingID. Every other scenario, and the approver dialog, is still simulated.`;
+const BANNER_REAL = `REAL MODE: the PRIVILEGE scenario sends a real tools/call to the Privilege gateway configured in this lab's .env and shows its real answer; the approval is yours, in the Privilege console, confirmed with a real PingID push to the approvers. The other scenarios' standalone MFA and push beats are still simulated: their step-up OTP and in-page mock phone are a labelled demo bypass, not a real PingOne MFA or PingID call.`;
 const BANNER_HOSTED = `HOSTED SIMULATION: a mock transfer gate, mock MFA step-up, a mock CIBA out-of-band approval and a mock Privilege gateway hold confirmed by a mock PingID. ${TAIL}`;
 
 const hashParts = () => {
