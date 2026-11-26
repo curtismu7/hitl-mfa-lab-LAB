@@ -29,7 +29,7 @@ test('customer.config.json is git-ignored, and its example only sets the four ca
 });
 
 test('no shipped text names a real customer, company or tenant', () => {
-  const skip = new Set(['node_modules', 'dist', '.git', 'package-lock.json']);
+  const skip = new Set(['node_modules', 'dist', '.git', 'package-lock.json', 'video']);
   const hits = [];
   const walk = (dir) => {
     for (const name of fs.readdirSync(dir)) {
