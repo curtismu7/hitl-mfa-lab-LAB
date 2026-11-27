@@ -176,13 +176,21 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
     if (!open) { setChallengeId(null); setOtp(""); setMsg(null); setRealOtp(null); return; }
     // Real OTP when the lab is configured for it (PingOne worker in .env): the human picks the device, the code
     // arrives (text, email, or in the PingID app), and a human types it. Otherwise the labelled demo code.
+    // A stale challenge (a reload mid-picker, a restart) must not dead-end the modal: cancel it and retry
+    // once. Only fall back to the labelled demo code when the lab is genuinely not configured.
     getJson("/api/mfa/real-otp/status").then((st) => {
       if (!st.configured) throw new Error("not configured");
-      return startRealOtp({ amount }).then((r) => {
-        if (!r.ok) throw new Error(r.body.detail || "Could not start the PingID challenge.");
+      const begin = () => startRealOtp({ amount }).then((r) => {
+        if (!r.ok) throw Object.assign(new Error(r.body.detail || "Could not start the PingID challenge."), { code: r.body.error });
         setRealOtp({ devices: r.body.devices || [], amount: r.body.amount ?? amount, selectedDevice: null });
       });
-    }).catch(() => {
+      return begin().catch((e) => {
+        if (e.code !== "otp_busy") throw e;
+        return fetch("/api/mfa/real-otp/cancel", { method: "POST", headers: { "content-type": "application/json" } })
+          .then(begin, begin);
+      });
+    }).catch((e) => {
+      if (e && e.code === "otp_busy") { setMsg("A real OTP challenge is still open server-side; press Start over."); return; }
       setRealOtp(null);
       startMfa({ amount }).then((r) => {
         if (r.ok) { setChallengeId(r.body.challenge.id); if (onIssued) onIssued({ id: r.body.challenge.id }); }
