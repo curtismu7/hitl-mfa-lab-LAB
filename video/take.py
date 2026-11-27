@@ -434,6 +434,13 @@ def main():
                     r = api("/api/privilege/real/call", {"approvalId": instruction_id} if instruction_id else {})
                     outcome = r.get("outcome")
                     log(f"poll {tries}: outcome={outcome}")
+                    # Each retry mints a NEW hold id (the gateway grants are single-use and amount-bound);
+                    # the approver's decision binds to the LATEST id, so track it or the grant never matches.
+                    if outcome == "held":
+                        new_id = (r.get("held") or {}).get("instruction_id", "")
+                        if new_id and new_id != instruction_id:
+                            instruction_id = new_id
+                            log("poll minted a new hold id, tracking it:", instruction_id)
                     if outcome == "executed":
                         approved = True
                         # Show the executed answer in the panel: the page's own retry loop also polls, so drive it through the UI.
