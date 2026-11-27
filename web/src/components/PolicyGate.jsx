@@ -195,7 +195,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
         <p>The policy requires device MFA for <strong>${amount}</strong>. The agent cannot satisfy it — a human must.</p>
         {challengeId ? (
           <>
-            <label htmlFor="mfa-otp">One-time code (demo OTP: <code>{DEMO_OTP}</code>)</label>
+            <label htmlFor="mfa-otp">One-time code (simulated device — the demo OTP is <code>{DEMO_OTP}</code>, not a real PingOne MFA code)</label>
             <input id="mfa-otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
             <div className="modal__actions">
               <button type="button" data-testid="mfa-verify" disabled={verifying} onClick={verify}>Verify</button>
@@ -204,7 +204,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
           </>
         ) : <p className="muted">{msg || "Starting the challenge..."}</p>}
         {msg && challengeId && <p className="field-error" role="alert">{msg}</p>}
-        <p className="muted">Verifying mints a step-up credit with a 5-minute TTL, and the call is retried once. The credit is single-use and amount-bound.</p>
+        <p className="muted">Verifying mints a step-up credit with a 5-minute TTL, and the call is retried once. The credit is single-use and amount-bound. This beat is simulated: the OTP is a labelled demo bypass, never a real PingOne MFA code.</p>
       </div>
     </FloatingDialog>
   );
@@ -261,7 +261,7 @@ function PushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
     <FloatingDialog isOpen placement="right" onClose={onClose} title="PingID push approval required" testId="push-modal"
       defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
-        <p>The policy requires a PingID push for <strong data-testid="push-amount">${amount}</strong>. A <strong>mock</strong> push was sent to the approver's phone; the agent is polling for the answer.</p>
+        <p>The policy requires a PingID push for <strong data-testid="push-amount">${amount}</strong>. A <strong>simulated</strong> push was sent to the in-page mock phone (this standalone beat never calls PingID; the PRIVILEGE scenario's approval push is the real one); the agent is polling for the answer.</p>
         {binding && <p className="muted">Binding message on the push: <code>{binding}</code></p>}
         {challengeId && (
           <div className="phone" data-testid="push-phone" aria-label="The approver's phone (mock)">
@@ -278,7 +278,7 @@ function PushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
         <div className="modal__actions">
           <button type="button" onClick={onClose}>Dismiss</button>
         </div>
-        <p className="muted">Approving mints a single-use, amount-bound credit and the call is retried once. In your own PingOne environment the same push goes to a real phone (see the PingID setup wizard); this one is simulated.</p>
+        <p className="muted">Approving mints a single-use, amount-bound credit and the call is retried once. This beat is simulated: the in-page phone stands in for PingID here, while the PRIVILEGE scenario's real approval push goes to the approvers through the tenant. See the PingID setup wizard for your own environment.</p>
       </div>
     </FloatingDialog>
   );
@@ -377,7 +377,7 @@ function PrivilegeModal({ open, amount, requestId, onApproved, onRejected, onClo
     <FloatingDialog isOpen placement="right" onClose={onClose} title="Privilege HITL Requests: approval needed" testId="privilege-modal"
       defaultWidth={620} defaultHeight={null} minHeight={260} footer={null}>
       <div className="modal__card">
-        <p>The Privilege gateway held the agent's <strong>${amount}</strong> transfer (403 <code>pending_approval</code>). You are the approver, in the console's <strong>HITL Requests</strong> (mock).</p>
+        <p>The Privilege gateway held the agent's <strong>${amount}</strong> transfer (403 <code>pending_approval</code>). In Mock mode you are the approver, in this page's mock of the console's <strong>HITL Requests</strong>; in Real mode the approval is yours in the real Privilege console, confirmed with a real PingID push.</p>
         <table className="tbl" data-testid="privilege-queue">
           <caption>Awaiting a decision</caption>
           <thead><tr><th>Request</th><th>Tool</th><th>Amount</th><th>Status</th></tr></thead>
