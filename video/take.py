@@ -65,6 +65,10 @@ def log(*a):
     with (WORK / "take.log").open("a") as f:
         print(*a, file=f, flush=True)
 
+# Through the shared lab-proxy the lab is picked by the `lab` cookie; the take must send it on every
+# call or the proxy answers with the launcher's SPA shell (HTML, not JSON) and the take dies parsing it.
+PROXY_COOKIE = {"Cookie": "lab=hitl-mfa-lab"} if "local.ping-devops.com:8443" in APP else {}
+
 def api(path, payload=None):
     """Call the lab's API from Python, as the page does: with a workspace header (the UI's calls are
     per-workspace; the take has its own, so its calls never touch a browser tab's state)."""
@@ -72,7 +76,7 @@ def api(path, payload=None):
     for attempt in range(5):
         try:
             req = urllib.request.Request(APP + path, data=json.dumps(payload or {}).encode() if payload is not None else None,
-                                         headers={**HEADERS, "x-workspace": "w-videotake"},
+                                         headers={**HEADERS, "x-workspace": "w-videotake", **PROXY_COOKIE},
                                          method="GET" if payload is None else "POST")
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.loads(r.read().decode())
