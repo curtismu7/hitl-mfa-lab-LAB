@@ -33,8 +33,10 @@ def from_story(story):
 def load(app_url, local_file=None, timeout=15):
     """Fetch the wording from the running lab and convert it. With `local_file` (the repo's captions.md) the lab must be serving THAT file's bytes: a lab built before an edit would
     otherwise record stale wording without a sign (set ALLOW_STALE_WORDING=1 to record anyway)."""
+    headers = {"Cookie": "lab=hitl-mfa-lab"} if "local.ping-devops.com:8443" in app_url else {}
     try:
-        with urllib.request.urlopen(app_url.rstrip("/") + "/api/story", timeout=timeout) as r:
+        req = urllib.request.Request(app_url.rstrip("/") + "/api/story", headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             story = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:   # the lab answers 500 with {"error": "...names the problem..."} when captions.md is broken
         try: detail = json.loads(e.read().decode()).get("error")
