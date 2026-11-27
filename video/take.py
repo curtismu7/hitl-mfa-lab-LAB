@@ -141,6 +141,21 @@ def first_sentence(s, limit=150):
     s = s[:cut + 1] if cut > 0 else s
     return s if len(s) <= limit else s[:limit].rsplit(" ", 1)[0] + "..."
 
+def wait_for_owner(page, selector, what, timeout_s=None):
+    """A human act: wait until the element the owner must press is GONE (modal closed / step advanced).
+    The take does not press it — the owner drives on camera. Abort via the abort flag or Ctrl-C."""
+    limit = timeout_s or APPROVAL_WAIT_S
+    log("WAITING FOR THE OWNER:", what, f"(up to {limit}s; press it in the recorded window)")
+    deadline = time.time() + limit
+    while time.time() < deadline:
+        if (WORK / "abort.flag").exists():
+            raise RuntimeError("aborted while waiting for the owner to act")
+        if not page.locator(selector).count():
+            log("the owner acted (", what, "is gone )")
+            return
+        time.sleep(1)
+    raise RuntimeError(f"the owner did not act within {limit}s: {what} was never pressed")
+
 def switch_source(page, source):
     """The lab's Mock/Real switch. The page reloads itself on success, so wait for the fresh banner."""
     r = api("/api/mode", {"source": source})
@@ -361,23 +376,24 @@ def main():
                     c.scroll_into_view_if_needed(); c.click()
                     return c
 
-                # Use case 1 — consent: the modal asks, a human approves, the transfer runs.
+                # Use case 1 — consent: the modal asks, the OWNER approves on camera (no auto-press).
                 mock_chip("consent-hitl")
                 page.wait_for_selector('[data-testid=consent-modal]', timeout=60000)
                 page.wait_for_timeout(600)
-                bubble(2, STEPS["consent_video"]["title"], STEPS["consent_video"]["text"], '[data-testid=consent-modal]', prefer="left")
-                page.click('[data-testid=consent-approve]')
+                bubble(2, STEPS["consent_video"]["title"], STEPS["consent_video"]["text"], '[data-testid=consent-modal]', prefer="left",
+                       lines=["the owner presses Approve — this consent is real policy enforcement, not a mock"])
+                wait_for_owner(page, '[data-testid=consent-approve]', "the consent Approve button")
                 page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
                 page.wait_for_timeout(1200)
                 page.evaluate("() => window.__cm.clear()")
-                # Use case 2 — MFA step-up: the modal asks for the one-time code; presence proven, policy re-evaluates to PERMIT.
+                # Use case 2 — MFA step-up: the modal shows the device picker; the OWNER picks a device, reads the
+                # real code, and types it (the real path when the PingOne worker is configured; demo code otherwise).
                 mock_chip("mfa-step-up")
                 page.wait_for_selector('[data-testid=mfa-modal]', timeout=60000)
                 page.wait_for_timeout(600)
                 bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], '[data-testid=mfa-modal]', prefer="left",
-                       lines=["OTP: 123123 (the labelled demo bypass)"])
-                page.fill('[data-testid=mfa-otp]', "123123")
-                page.click('[data-testid=mfa-verify]')
+                       lines=["the owner picks a device and types the code that arrives"])
+                wait_for_owner(page, '[data-testid=mfa-verify]', "the MFA Verify button (after picking a device and typing the code)")
                 page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
                 page.wait_for_timeout(1200)
                 page.evaluate("() => window.__cm.clear()")

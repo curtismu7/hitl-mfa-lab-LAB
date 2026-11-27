@@ -48,3 +48,17 @@ Mock/Real mode contract (rule 19, `POST /api/mode` shape); the decision contract
 
 ## Verification plan
 `npm test` in the worktree; `node scripts/story-checkPin.mjs .`; `walk.py` both sizes + `play.py` on a local run; rehearsal pixel-compare old vs new take (old run twice for variance); Docker image probe on the Air; `/code-review` on the lab's own code; PR open until the owner says "merge N". No deploy beyond local Docker.
+
+## Addendum (2026-11-25): real OTP for the MFA use case
+
+The MFA step-up modal's one-time code becomes REAL when `HMLAB_PINGONE_*` is configured (the
+new tenant 5bfb4e12 lab worker): the server drives PingOne's Device Authentications API with
+the worker token — `POST /deviceAuthentications` (user demouser), select the PINGID_MOBILE
+device, and the PingID app shows a 6-digit code; the human types it; `otp.check` completes it
+and the lab mints the same amount-bound step-up receipt. The phone is real, the code is real,
+the human is real. Consent stays as it was (a real gate on this page; nothing was simulated
+about it). The old fixed demo code (123123) remains only as the fallback when PingOne is not
+configured, clearly labelled. Netguard: `auth.pingone.com` (and the region's api host) is
+allow-listed the same way the Real gateway host is — owner-configured, https, no redirects,
+bounded bodies, timeouts. The take stops auto-pressing: the owner clicks Approve and types
+the OTP on camera.

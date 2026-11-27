@@ -7,7 +7,7 @@ import GatewayTrace from "../gateway-trace/GatewayTrace.jsx";
 import RunObs from "./RunObs";
 import TokenReel from "./TokenReel";
 import { nextTrail, realRun, reelCards } from "../liveFlow";
-import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
+import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, startRealOtp, selectRealOtpDevice, verifyRealOtp, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
 import { visible } from "../safeText";
 import PingIdSetup from "./PingIdSetup";
 
@@ -171,18 +171,55 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
   const [otp, setOtp] = useState("");
   const [msg, setMsg] = useState(null);
   const [verifying, setVerifying] = useState(false);
+  const [realOtp, setRealOtp] = useState(null); // a real PingOne challenge is open: { devices, amount, selectedDevice }
   useEffect(() => {
-    if (!open) { setChallengeId(null); setOtp(""); setMsg(null); return; }
-    startMfa({ amount }).then((r) => {
-      if (r.ok) { setChallengeId(r.body.challenge.id); if (onIssued) onIssued({ id: r.body.challenge.id }); }
-      else setMsg(r.body.detail || "Could not start the MFA challenge.");
-    }, () => setMsg("Could not start the MFA challenge."));
+    if (!open) { setChallengeId(null); setOtp(""); setMsg(null); setRealOtp(null); return; }
+    // Real OTP when the lab is configured for it (PingOne worker in .env): the human picks the device, the code
+    // arrives (text, email, or in the PingID app), and a human types it. Otherwise the labelled demo code.
+    getJson("/api/mfa/real-otp/status").then((st) => {
+      if (!st.configured) throw new Error("not configured");
+      return startRealOtp({ amount }).then((r) => {
+        if (!r.ok) throw new Error(r.body.detail || "Could not start the PingID challenge.");
+        setRealOtp({ devices: r.body.devices || [], amount: r.body.amount ?? amount, selectedDevice: null });
+      });
+    }).catch(() => {
+      setRealOtp(null);
+      startMfa({ amount }).then((r) => {
+        if (r.ok) { setChallengeId(r.body.challenge.id); if (onIssued) onIssued({ id: r.body.challenge.id }); }
+        else setMsg(r.body.detail || "Could not start the MFA challenge.");
+      }, () => setMsg("Could not start the MFA challenge."));
+    });
   }, [open, amount]);
   if (!open) return null;
+  const pickDevice = async (deviceId) => {
+    if (!realOtp || realOtp.selectedDevice) return;
+    setMsg(null);
+    setRealOtp((s) => ({ ...s, picking: deviceId }));
+    const r = await selectRealOtpDevice({ deviceId }).catch(() => ({ ok: false, body: {} }));
+    setRealOtp((s) => ({ ...s, picking: null }));
+    if (r.ok) setRealOtp((s) => ({ ...s, selectedDevice: deviceId }));
+    else setMsg(r.body.detail || "Could not select that device.");
+  };
+  const restart = async () => {
+    setMsg(null); setOtp("");
+    await fetch("/api/mfa/real-otp/cancel", { method: "POST", headers: { "content-type": "application/json" } }).catch(() => {});
+    setRealOtp(null);
+    startRealOtp({ amount }).then((r) => {
+      if (!r.ok) { setMsg(r.body.detail || "Could not restart the PingID challenge."); setRealOtp(null); return; }
+      setRealOtp({ devices: r.body.devices || [], amount: r.body.amount ?? amount, selectedDevice: null });
+    }, () => setMsg("Could not restart the PingID challenge."));
+  };
   const verify = async () => {
     if (verifying) return;
     setMsg(null);
     setVerifying(true);
+    if (realOtp) {
+      const r = await verifyRealOtp({ otp }).catch(() => ({ ok: false, body: {} }));
+      setVerifying(false);
+      if (r.ok) onVerified(r.body.receipt);
+      else setMsg(r.body.detail || "Verification failed.");
+      return;
+    }
     const r = await verifyMfa({ challengeId, otp }).catch(() => ({ ok: false, body: {} }));
     setVerifying(false);
     if (r.ok) onVerified(r.body.receipt);  // { id, ttlMs, kind }
@@ -193,18 +230,45 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
       defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
         <p>The policy requires device MFA for <strong>${amount}</strong>. The agent cannot satisfy it — a human must.</p>
-        {challengeId ? (
+        {(challengeId || realOtp) ? (
           <>
-            <label htmlFor="mfa-otp">One-time code (simulated device — the demo OTP is <code>{DEMO_OTP}</code>, not a real PingOne MFA code)</label>
-            <input id="mfa-otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
-            <div className="modal__actions">
-              <button type="button" data-testid="mfa-verify" disabled={verifying} onClick={verify}>Verify</button>
-              <button type="button" onClick={onClose}>Dismiss</button>
-            </div>
+            {realOtp && !realOtp.selectedDevice ? (
+              <>
+                <p><strong>How should the code reach you?</strong> Pick a device; PingOne sends (or shows) the one-time code.</p>
+                <div className="modal__actions" style={{ flexDirection: "column", alignItems: "stretch" }} data-testid="real-otp-devices">
+                  {realOtp.devices.map((d) => (
+                    <button key={d.id} type="button" data-testid={`real-otp-device-${d.type}`} disabled={realOtp.picking}
+                      onClick={() => pickDevice(d.id)}>
+                      <strong>{d.type}</strong>{d.nickname ? ` — ${d.nickname}` : ""} <span className="muted">({d.delivery})</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="muted">The credit is amount-bound to ${realOtp.amount}: it discharges this call only.</p>
+              </>
+            ) : realOtp ? (
+              <>
+                <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: it was sent to the device you picked. Type it and Verify.</label>
+                <input id="mfa-otp" type="text" inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
+                <div className="modal__actions">
+                  <button type="button" data-testid="mfa-verify" disabled={verifying || !otp.trim()} onClick={verify}>Verify</button>
+                  <button type="button" onClick={onClose}>Dismiss</button>
+                  <button type="button" data-testid="mfa-restart" disabled={verifying} onClick={restart}>Wrong number? Start over</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label htmlFor="mfa-otp">One-time code (no PingOne configured — the demo OTP is <code>{DEMO_OTP}</code>)</label>
+                <input id="mfa-otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
+                <div className="modal__actions">
+                  <button type="button" data-testid="mfa-verify" disabled={verifying} onClick={verify}>Verify</button>
+                  <button type="button" onClick={onClose}>Dismiss</button>
+                </div>
+              </>
+            )}
           </>
         ) : <p className="muted">{msg || "Starting the challenge..."}</p>}
-        {msg && challengeId && <p className="field-error" role="alert">{msg}</p>}
-        <p className="muted">Verifying mints a step-up credit with a 5-minute TTL, and the call is retried once. The credit is single-use and amount-bound. This beat is simulated: the OTP is a labelled demo bypass, never a real PingOne MFA code.</p>
+        {msg && (challengeId || realOtp) && <p className="field-error" role="alert">{msg}</p>}
+        <p className="muted">Verifying mints a step-up credit with a 5-minute TTL, and the call is retried once. The credit is single-use and amount-bound. {realOtp ? "The code is a real PingOne MFA code, delivered to the device you picked." : "This beat is simulated: the OTP is a labelled demo bypass, never a real PingOne MFA code."}</p>
       </div>
     </FloatingDialog>
   );

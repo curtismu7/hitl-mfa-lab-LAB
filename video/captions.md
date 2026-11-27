@@ -156,7 +156,7 @@ Three ways a person decides
 # Step: consent_video
 
 ## Text
-Use case one — consent. The agent's $300 call clears the confirm bar but not the MFA bar, so the gate pauses it and surfaces a consent modal. A person reads what the agent is asking to do and approves — or refuses. The approval is a single-use receipt: it lets this one call proceed, once.
+Use case one — consent. The agent's $300 call clears the confirm bar but not the MFA bar, so the gate pauses it and surfaces a consent modal. A person reads what the agent is asking to do and approves — or refuses, on camera. This is real policy enforcement, not a staged prompt: the approval is a single-use, amount-bound receipt that lets this one call proceed, once.
 
 ## Title
 Use case 1 — consent: a human approves the ask
@@ -166,7 +166,7 @@ Use case 1 — consent: a human approves the ask
 # Step: mfa_video
 
 ## Text
-Use case two — step-up MFA. At $600 the call clears the MFA bar, and step-up outranks the consent gate: a modal asks for a one-time code from the person's device (the demo OTP is 123123, a labelled bypass). The code proves the human is present, and the policy re-evaluates to PERMIT.
+Use case two — step-up MFA. At $600 the call clears the MFA bar, and step-up outranks the consent gate: a modal asks the person to pick a device — a text, an email, or the PingID app — and the one-time code arrives on it. The person types the code they received; PingOne checks it, and the policy re-evaluates to PERMIT. This is the real PingOne MFA path, not a staged code.
 
 ## Title
 Use case 2 — MFA: the person proves presence

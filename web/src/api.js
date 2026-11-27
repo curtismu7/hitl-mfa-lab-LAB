@@ -39,6 +39,10 @@ export async function runTool(payload, { approvalId = null, retry = false } = {}
 // MFA step-up (UC7).
 export const startMfa = (payload) => postJson("/api/mfa/challenge", payload);
 export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
+export const startRealOtp = (payload) => postJson("/api/mfa/real-otp/challenge", payload);
+export const selectRealOtpDevice = (payload) => postJson("/api/mfa/real-otp/select", payload);
+export const verifyRealOtp = (payload) => postJson("/api/mfa/real-otp/verify", payload);
+export const realOtpStatus = () => getJson("/api/mfa/real-otp/status");
 
 // PingID push (mock): fire the push, poll until the phone answers, and (the mock phone) answer it.
 export const startPush = (payload) => postJson("/api/mfa/push", payload);
