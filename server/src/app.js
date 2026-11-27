@@ -13,6 +13,7 @@ import { loadCast, verticalFrom, VERTICALS } from './cast.js';
 import { hostedFrom, modeFrom, realAvailableFrom, realConfigFrom } from './config.js';
 import { allowHost, clearAllowedHosts } from './netguard.js';
 import { RealError, createPrivilegeReal } from './privilegeReal.js';
+import { createPingoneOtp, pingoneOtpHosts } from './pingoneOtp.js';
 import { buildStory } from './story.js';
 import { storyResponse } from './storyRoute.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
@@ -54,6 +55,10 @@ export function createApp({
   // Rule 19: the mode is runtime server state. Real (owner-run) is the only thing that may leave the machine, and only to the one configured gateway:
   // choosing Real opens the netguard allowlist for that host, choosing Mock (or starting in Mock) closes it again.
   const real = createPrivilegeReal({ env });
+  // Real OTP (owner-run): the MFA step-up code comes from the approver's PingID app, checked by PingOne's Device
+  // Authentications API. Reachable only while the owner configures HMLAB_PINGONE_* — the same allow-list discipline
+  // as the Real gateway (https, no redirects, bounded, timeouts), and only these two hosts.
+  const pingoneOtp = createPingoneOtp({ env });
   // Rule 27: each decision is stamped once and written as one stdout line (run-observability: runLog.js). A recorder that fails must never break the call it describes.
   const runLog = createRunLog({ write: runLogWrite, clock: runLogClock });
   // target: a workspace id, or the run store itself (a Real call keeps the store it started with, so a Reset while it is in flight orphans it and the late reply joins no run).
@@ -83,6 +88,9 @@ export function createApp({
     clearAllowedHosts();
     const c = realConfigFrom(env);
     if (next === 'real' && c.ok) allowHost(c.host, { privateOk: c.privateOk, http: c.allowHttp });
+    // Real OTP lives on the same terms: the two PingOne hosts are reachable whenever the worker is configured
+    // (owner-provided), in Mock as well as Real — the OTP is a real credential either way.
+    if (pingoneOtp.configured()) for (const h of pingoneOtpHosts(pingoneOtp.config())) allowHost(h, { privateOk: false, http: false });
   };
   applyMode(source);
   const castFor = (req) => loadCast(configFile, verticalFrom(req.query.vertical));
@@ -316,6 +324,67 @@ export function createApp({
     const receipt = v.receipts.mint({ kind: 'stepUp', amount: challenge.amount, tool: challenge.tool, taskId: challenge.id });
     return res.json({ challenge: { id: challenge.id, status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
   }));
+
+  // ---- REAL OTP (owner-run): the code comes from the approver's PingID app, checked by PingOne. ----
+  // Same shape as the demo verify: the answer mints the same amount-bound step-up receipt. The code is
+  // never logged (only ok/not), the challenge is one-at-a-time, and the reachable host list is exactly
+  // the two PingOne hosts (allow-listed above only while the worker is configured).
+  api.post('/mfa/real-otp/challenge', withWorkspace(async (ws, req, res) => {
+    const body = req.body || {};
+    const amount = typeof body.amount === 'number' && Number.isFinite(body.amount) && body.amount >= 0 && body.amount <= LIMITS.amount ? body.amount : null;
+    if (amount === null) return res.status(400).json({ error: 'amount_required', detail: 'body.amount must be a number within range — the credit is amount-bound' });
+    try {
+      // Step 1 of 2: open the challenge and hand the device list to the UI's picker (the human picks how they want the code).
+      const opened = await pingoneOtp.open(amount);
+      obs(ws, 'real', beat.mfaChallenge({ id: 'pingone-real', amount }));
+      return res.json({ challenge: { id: 'pingone-real', method: 'device-authentication', status: 'devices' }, devices: opened.devices, amount: opened.amount, workspace: ws });
+    } catch (e) {
+      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
+    }
+  }));
+  api.post('/mfa/real-otp/select', withWorkspace(async (ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || typeof body.deviceId !== 'string' || !body.deviceId.trim()) {
+      return res.status(400).json({ error: 'device_required', detail: 'body.deviceId must be a device id from the challenge' });
+    }
+    try {
+      // Step 2 of 2: selecting the device delivers the code (SMS texts it, EMAIL mails it, the PingID app shows push/OTP).
+      const sel = await pingoneOtp.select(body.deviceId.trim());
+      obs(ws, 'real', beat.mfaChallenge({ id: 'pingone-real-selected', amount: null }));
+      return res.json({ selected: true, amount: sel.amount, hint: sel.hint, workspace: ws });
+    } catch (e) {
+      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
+    }
+  }));
+  api.post('/mfa/real-otp/verify', withWorkspace(async (ws, req, res) => {
+    const body = req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body) || typeof body.otp !== 'string' || !body.otp.trim()) {
+      return res.status(400).json({ error: 'otp_required', detail: 'body.otp must be the code shown in the PingID app' });
+    }
+    const v = workspaces.state(ws);
+    try {
+      const r = await pingoneOtp.verify(body.otp);
+      obs(ws, 'real', beat.mfaCode({ id: 'pingone-real', ok: true }));
+      // The credit is bound to the amount the challenge was started with (the challenge carries it), never to caller-supplied numbers.
+      const amount = Number.isFinite(r.amount) ? r.amount : null;
+      if (amount === null) return res.status(409).json({ error: 'otp_amount', detail: 'the challenge carried no amount; start it again' });
+      const receipt = v.receipts.mint({ kind: 'stepUp', amount, tool: 'create_transfer', taskId: 'pingone-real' });
+      return res.json({ challenge: { id: 'pingone-real', status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
+    } catch (e) {
+      obs(ws, 'real', beat.mfaCode({ id: 'pingone-real', ok: false }));
+      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
+    }
+  }));
+  api.post('/mfa/real-otp/cancel', withWorkspace((ws, _req, res) => {
+    pingoneOtp.cancel();
+    return res.json({ cancelled: true, workspace: ws });
+  }));
+  api.get('/mfa/real-otp/status', (_req, res) => {
+    res.json({ configured: pingoneOtp.configured(), inFlight: pingoneOtp.inFlight() });
+  });
 
   // PingID push step-up (mock): the push goes to the approver's phone, the approver answers on it (the in-page mock phone) and the agent polls.
   // Approval mints a single-use, amount-bound credit (kind 'push'). Nothing here calls PingOne or PingID.
