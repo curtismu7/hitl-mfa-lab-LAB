@@ -65,6 +65,10 @@ def log(*a):
     with (WORK / "take.log").open("a") as f:
         print(*a, file=f, flush=True)
 
+# Through the shared lab-proxy the lab is picked by the `lab` cookie; the take must send it on every
+# call or the proxy answers with the launcher's SPA shell (HTML, not JSON) and the take dies parsing it.
+PROXY_COOKIE = {"Cookie": "lab=hitl-mfa-lab"} if "local.ping-devops.com:8443" in APP else {}
+
 def api(path, payload=None):
     """Call the lab's API from Python, as the page does: with a workspace header (the UI's calls are
     per-workspace; the take has its own, so its calls never touch a browser tab's state)."""
@@ -72,7 +76,7 @@ def api(path, payload=None):
     for attempt in range(5):
         try:
             req = urllib.request.Request(APP + path, data=json.dumps(payload or {}).encode() if payload is not None else None,
-                                         headers={**HEADERS, "x-workspace": "w-videotake"},
+                                         headers={**HEADERS, "x-workspace": "w-videotake", **PROXY_COOKIE},
                                          method="GET" if payload is None else "POST")
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.loads(r.read().decode())
@@ -391,7 +395,10 @@ def main():
                 mock_chip("mfa-step-up")
                 page.wait_for_selector('[data-testid=mfa-modal]', timeout=60000)
                 page.wait_for_timeout(600)
-                bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], '[data-testid=mfa-modal]', prefer="left",
+                # The floating panel's fd-body scrolls (overflow:auto) and the panel box gets viewport-clipped,
+                # so the red box on the whole modal cut off before Verify/Dismiss. Highlight the card that
+                # actually holds the device picker / OTP field / buttons instead.
+                bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], '[data-testid=mfa-modal] .modal__card', prefer="left",
                        lines=["the owner picks a device and types the code that arrives"])
                 wait_for_owner(page, '[data-testid=mfa-verify]', "the MFA Verify button (after picking a device and typing the code)")
                 page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
@@ -443,36 +450,33 @@ def main():
                 approved = False
                 deadline = time.time() + APPROVAL_WAIT_S
                 tries = 0
+                # The page already retries the held call every 3s (PolicyGate's quiet loop); a second caller
+                # doubles the retries the gateway sees and each can re-notify the approvers — the "multiple
+                # pushes to PingID" spam. Watch the page's own loop through the trace instead of re-calling.
+                last_trace = page.inner_text('[data-testid=gateway-trace]').strip()
                 while time.time() < deadline:
                     if (WORK / "abort.flag").exists():
                         log("aborted while waiting for the approval"); break
                     tries += 1
-                    r = api("/api/privilege/real/call", {"approvalId": instruction_id} if instruction_id else {})
-                    outcome = r.get("outcome")
-                    log(f"poll {tries}: outcome={outcome}")
-                    # Each retry mints a NEW hold id (the gateway grants are single-use and amount-bound);
-                    # the approver's decision binds to the LATEST id, so track it or the grant never matches.
-                    if outcome == "held":
-                        new_id = (r.get("held") or {}).get("instruction_id", "")
-                        if new_id and new_id != instruction_id:
-                            instruction_id = new_id
-                            log("poll minted a new hold id, tracking it:", instruction_id)
-                    if outcome == "executed":
+                    page.wait_for_timeout(POLL_S * 1000)
+                    trace_text = page.inner_text('[data-testid=gateway-trace]').strip()
+                    if trace_text == last_trace:
+                        log(f"poll {tries}: trace unchanged (page's retry loop still waiting)")
+                        continue
+                    last_trace = trace_text
+                    m = re.search(r"ins_[A-Za-z0-9_-]+", trace_text)
+                    if m and m.group(0) != instruction_id:
+                        instruction_id = m.group(0)
+                        log("page's retry minted a new hold id, tracking it:", instruction_id)
+                    if "executed" in trace_text.lower() or "PERMITTED" in trace_text:
                         approved = True
-                        # Show the executed answer in the panel: the page's own retry loop also polls, so drive it through the UI.
-                        if instruction_id and page.locator('[data-testid=real-approval]').count():
-                            page.fill('[data-testid=real-approval]', instruction_id)
-                            page.click('[data-testid=real-retry]')
-                        page.wait_for_timeout(4000)
                         break
-                    if outcome not in ("held",):
-                        log("unexpected outcome while waiting:", outcome, str(r)[:300])
+                    log(f"poll {tries}: trace moved but still not executed")
                     if page.locator('[data-testid=real-waiting]').count():
                         page.evaluate("""() => { const w = document.querySelector('[data-testid=real-waiting]');
                             if (w && !w.dataset.cmNote) { w.dataset.cmNote = '1';
                                 const p = document.createElement('p'); p.style.fontWeight = '700';
                                 p.textContent = 'Waiting for the approver to decide on their phone (PingID push)...'; w.appendChild(p); } }""")
-                    time.sleep(POLL_S)
                 result["approved"] = approved
                 if not approved:
                     raise RuntimeError(f"the approval did not land within {APPROVAL_WAIT_S}s — the owner never approved the push, "
