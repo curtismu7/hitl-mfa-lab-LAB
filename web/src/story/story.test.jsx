@@ -23,6 +23,25 @@ describe("createOverlay", () => {
     o.clear(); expect(document.querySelector(".story-bub")).toBeNull(); expect(document.querySelector(".story-hl")).toBeNull();
   });
 
+  test("the red box follows a target that grows or moves with no scroll or resize (a modal that loads its device list)", () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<div id="card"></div>';
+      const card = document.getElementById("card");
+      let rect = { left: 100, top: 100, width: 200, height: 100, right: 300, bottom: 200 };
+      card.getBoundingClientRect = () => rect;
+      const o = mk();
+      o.cap({ n: 1, total: 1, title: "t", text: "x", target: "#card" });
+      vi.advanceTimersByTime(50);   // the first frame's own redraw is done; from here only the follower can notice a change
+      expect(document.querySelector(".story-hl").style.height).toBe("110px");
+      rect = { left: 100, top: 100, width: 200, height: 400, right: 300, bottom: 500 };
+      vi.advanceTimersByTime(300);
+      expect(document.querySelector(".story-hl").style.height).toBe("410px");
+      o.clear(); vi.advanceTimersByTime(300);
+      expect(document.querySelector(".story-hl")).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
   test("text is set as text: markup in a title, an answer line or a slide is never parsed", () => {
     const o = mk();
     o.cap({ n: 1, total: 1, title: "<img src=x onerror=alert(1)>", text: "<b>bold</b>", lines: ["<script>x</script>"] });

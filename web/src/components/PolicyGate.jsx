@@ -255,7 +255,9 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
               </>
             ) : realOtp ? (
               <>
-                <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: it was sent to the device you picked. Type it and Verify.</label>
+                <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: {realOtp.devices.find((d) => d.id === realOtp.selectedDevice)?.type === "PINGID_MOBILE"
+                  ? <>PingOne asked the PingID app to push it. <strong data-testid="mfa-pingid-hint">No push? Open the PingID app and type the passcode it shows.</strong></>
+                  : <>it was sent to the device you picked.</>} Type it and Verify.</label>
                 <input id="mfa-otp" type="text" inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
                 <div className="modal__actions">
                   <button type="button" data-testid="mfa-verify" disabled={verifying || !otp.trim()} onClick={verify}>Verify</button>
