@@ -55,15 +55,17 @@ The lab's banner says which is which before anything is sent:
 ## Column A: What is real
 - The MCP tools/call the agent sends, and the policy decision to hold it
 - The hold's answer on the wire: HTTP 403 with a JSON-RPC error carrying pending_approval and an instruction id
-- In the real take: the gateway call itself, to the Privilege gateway door configured in this lab
+- The gateway call itself, to the Privilege gateway door configured in this lab
+- The consent approval: a human presses Approve, minting a single-use, amount-bound receipt
+- The MFA step-up: a human picks a device, receives a real PingOne code (text, email, or the PingID app), and types it
+- The PingID push: the approver decides on their own phone
 
 ## Column B: What is simulated
-- The Privilege gateway's hold and the PingID push, in the mock take — modelled on a real tenant's behavior, run entirely in the lab
-- The approver's phone, drawn on the page; nothing is sent to PingOne or a real device
-- On a real tenant, whether the retry id equals the instruction id, and the exact 403 shape, are unverified — the lab reads both at runtime
+- In the SAMPLE take only (clearly labelled): the mock gateway, the mock hold and the mock phone drawn on the page
+- The money movement itself: no real funds move; the transfer ends at the policy verdict
 
 ## Verdict
-The lab never calls PingID or PingOne. In the real take the one real call goes to the configured gateway and its answer is shown as received; the approval still happens in the owner's own console, on their phone.
+In the real take every human beat is a real human: consent is pressed, the OTP is received and typed, the push is answered on the phone. The lab simulates nothing about the approvals.
 
 ---
 
