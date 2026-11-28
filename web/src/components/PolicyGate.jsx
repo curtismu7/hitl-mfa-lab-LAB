@@ -201,6 +201,8 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
   // A PingID push can simply be approved in the app: PingOne marks the challenge COMPLETED, no number needed. Poll for that while the
   // code box stays open as the fallback (a code typed instead ends the challenge, and the poll then stops on its own).
   const pushPending = Boolean(open && realOtp && realOtp.selectedDevice && realOtp.push);
+  // PingOne's MFA policy says whether the PingID push asks for a number (number matching). Off = just approve, so no code box; on, or unknown, keeps the box.
+  const approveOnly = Boolean(realOtp && realOtp.push && realOtp.devices.find((d) => d.id === realOtp.selectedDevice)?.numberMatching === false);
   const cb = useRef({ onVerified });
   useEffect(() => { cb.current = { onVerified }; });
   useEffect(() => {
@@ -281,10 +283,18 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
                 <p className="muted">The credit is amount-bound to ${realOtp.amount}: it discharges this call only.</p>
               </>
             ) : realOtp ? (
+              approveOnly ? (
+                <>
+                  <p data-testid="mfa-pingid-hint"><strong>Real:</strong> PingOne sent a push to the PingID app. Approve it there and this page carries on by itself.</p>
+                  <div className="modal__actions">
+                    <button type="button" onClick={onClose}>Dismiss</button>
+                    <button type="button" data-testid="mfa-restart" onClick={restart}>Start over</button>
+                  </div>
+                </>
+              ) : (
               <>
-                <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: {realOtp.devices.find((d) => d.id === realOtp.selectedDevice)?.type === "PINGID_MOBILE"
-                  ? <>PingOne sent a push to the PingID app: <strong data-testid="mfa-pingid-hint">approve it there and this page carries on by itself. No push, or the app shows a number? Type that code instead.</strong></>
-                  : <>it was sent to the device you picked.</>} {realOtp.push ? "" : " Type it and Verify."}</label>
+                {realOtp.push && <p data-testid="mfa-pingid-number-hint"><strong>Real:</strong> PingOne sent a push to the PingID app. Approve it there (this page carries on by itself), or type the number it shows.</p>}
+                <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: it was sent to the device you picked. Type it and Verify.</label>
                 <input id="mfa-otp" type="text" inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
                 <div className="modal__actions">
                   <button type="button" data-testid="mfa-verify" disabled={verifying || !otp.trim()} onClick={verify}>Verify</button>
@@ -292,6 +302,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
                   <button type="button" data-testid="mfa-restart" disabled={verifying} onClick={restart}>Wrong number? Start over</button>
                 </div>
               </>
+              )
             ) : (
               <>
                 <label htmlFor="mfa-otp">One-time code (no PingOne configured — the demo OTP is <code>{DEMO_OTP}</code>)</label>
