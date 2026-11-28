@@ -166,7 +166,7 @@ function ConsentModal({ open, amount, challengeId, onApproved, onDenied, onClose
 }
 
 /** The MFA beat: device challenge + the demo OTP. Verifying mints the TTL credit and auto-retries. */
-function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
+function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, title = "MFA step-up required" }) {
   const [challengeId, setChallengeId] = useState(null);
   const [otp, setOtp] = useState("");
   const [msg, setMsg] = useState(null);
@@ -222,7 +222,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
     setMsg(null);
     setVerifying(true);
     if (realOtp) {
-      const r = await verifyRealOtp({ otp }).catch(() => ({ ok: false, body: {} }));
+      const r = await verifyRealOtp({ otp, ...(method ? { method } : {}) }).catch(() => ({ ok: false, body: {} }));
       setVerifying(false);
       if (r.ok) onVerified(r.body.receipt);
       else setMsg(r.body.detail || "Verification failed.");
@@ -234,7 +234,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
     else setMsg(r.body.detail || "Verification failed.");
   };
   return (
-    <FloatingDialog isOpen placement="right" onClose={onClose} title="MFA step-up required" testId="mfa-modal"
+    <FloatingDialog isOpen placement="right" onClose={onClose} title={title} testId="mfa-modal"
       defaultWidth={560} defaultHeight={null} minHeight={240} footer={null}>
       <div className="modal__card">
         <p>The policy requires device MFA for <strong>${amount}</strong>. The agent cannot satisfy it — a human must.</p>
@@ -287,7 +287,23 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued }) {
 /** The PingID push beat. The server (mock) sends a push to the approver's phone; the agent polls until the phone answers. Approve mints a
  * single-use, amount-bound credit and the call is retried once; "No, it's not me" leaves it held. Here the phone is the labelled mock panel
  * below: nothing is sent to PingOne or a real device (that live path is owner-run and not wired into this server). */
-function PushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
+function PushModal(props) {
+  // Real mode (PingOne worker configured): the PUSH beat is the real device path, picker included, and its credit is the 'push' kind.
+  // Otherwise the labelled mock phone. Nothing mounts until the lab says which it is, so the mock never sends a push in Real mode.
+  const [real, setReal] = useState(null);
+  const { open } = props;
+  useEffect(() => {
+    if (!open) { setReal(null); return undefined; }
+    let stop = false;
+    getJson("/api/mfa/real-otp/status").then((st) => { if (!stop) setReal(Boolean(st && st.configured)); }, () => { if (!stop) setReal(false); });
+    return () => { stop = true; };
+  }, [open]);
+  if (!open || real === null) return null;
+  if (real) return <MfaModal open amount={props.amount} onIssued={props.onIssued} onVerified={props.onVerified} onClose={props.onClose} method="pingid-push" title="PingID push approval required" />;
+  return <MockPushModal {...props} />;
+}
+
+function MockPushModal({ open, amount, onVerified, onDenied, onClose, onIssued }) {
   const [challengeId, setChallengeId] = useState(null);
   const [msg, setMsg] = useState(null);
   const [binding, setBinding] = useState(null);

@@ -57,6 +57,7 @@ function mockFetch() {
       { id: "dev-pingid", type: "PINGID_MOBILE", nickname: "iPhone", delivery: "the PingID app (push, or OTP if enabled)", otpReady: true },
       { id: "dev-sms", type: "SMS", nickname: "Mobile 1", delivery: "text message", otpReady: true }] });
     if (override.realOtp && url === "/api/mfa/real-otp/select") return json({ selected: true, amount: 600 });
+    if (override.realOtp && url === "/api/mfa/real-otp/verify") return json({ challenge: { id: "pingone-real", status: "verified" }, receipt: { id: "push-receipt-0001", ttlMs: 300000, kind: "push" } });
     if (url.startsWith("/api/diagram")) return json(DIAGRAM);
     if (url === "/api/policy" && (!opts.method || opts.method === "GET")) {
       return json({ bands: override.bands || DEFAULT_BANDS, receipts: [], workspace: "t" });
@@ -318,6 +319,23 @@ describe("flow and token reel on the transfer gate tab", () => {
     await waitFor(() => expect(screen.getByTestId("reel-challenge-state")).toHaveTextContent("refused"));
     expect(screen.getByTestId("reel-outcome-state")).toHaveTextContent("not executed");
     expect(screen.queryByTestId("reel-receipt")).toBeNull();
+  }, 15000);
+});
+
+describe("PingID push step-up (real, when the PingOne worker is configured)", () => {
+  it("the PUSH scenario shows the device picker, never the mock phone, and verifies as a 'push' credit", async () => {
+    override.realOtp = true;
+    await ready();
+    await userEvent.click(screen.getByText("PUSH: $150 approved with a PingID push on the phone"));
+    expect(await screen.findByTestId("real-otp-devices")).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-modal")).toHaveTextContent("PingID push approval required");
+    expect(screen.queryByTestId("push-phone")).toBeNull();
+    expect(calls.some((c) => c.url === "/api/mfa/push")).toBe(false);   // the mock push endpoint is never called in Real mode
+    await userEvent.click(screen.getByTestId("real-otp-device-PINGID_MOBILE"));
+    await userEvent.type(await screen.findByTestId("mfa-otp"), "482913");
+    await userEvent.click(screen.getByTestId("mfa-verify"));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/mfa/real-otp/verify")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.url === "/api/mfa/real-otp/verify").opts.body)).toEqual({ otp: "482913", method: "pingid-push" });
   }, 15000);
 });
 

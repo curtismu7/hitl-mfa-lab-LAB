@@ -370,7 +370,9 @@ export function createApp({
       // The credit is bound to the amount the challenge was started with (the challenge carries it), never to caller-supplied numbers.
       const amount = Number.isFinite(r.amount) ? r.amount : null;
       if (amount === null) return res.status(409).json({ error: 'otp_amount', detail: 'the challenge carried no amount; start it again' });
-      const receipt = v.receipts.mint({ kind: 'stepUp', amount, tool: 'create_transfer', taskId: 'pingone-real' });
+      // The PUSH scenario declares pingid-push and its retry claims a 'push' credit; the MFA scenario claims 'stepUp'. Same real PingOne check, two credit kinds.
+      const kind = body.method === 'pingid-push' ? 'push' : 'stepUp';
+      const receipt = v.receipts.mint({ kind, amount, tool: 'create_transfer', taskId: 'pingone-real' });
       return res.json({ challenge: { id: 'pingone-real', status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
     } catch (e) {
       obs(ws, 'real', beat.mfaCode({ id: 'pingone-real', ok: false }));
