@@ -405,7 +405,7 @@ def main():
                 mfa_card = '[data-testid=mfa-modal] .modal__card'
                 mfa_cap = dict(n=3, total=TOTAL, title=STEPS["mfa_video"]["title"], text=STEPS["mfa_video"]["text"], target=mfa_card, lines=["the owner picks a device and types the code that arrives"], prefer="left")
                 mfa_drawn = [box_key(page, mfa_card)]   # a list: the tick below updates it
-                bubble(3, mfa_cap["title"], mfa_cap["text"], mfa_card, prefer="left", lines=mfa_cap["lines"])
+                bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], mfa_card, prefer="left", lines=mfa_cap["lines"])   # spelled STEPS["mfa_video"] so test/story.test.js can read the bubble order from this file
                 # The card changes size when the owner picks a device (picker -> code box): draw the box again around what is there now, before and while we wait.
                 mfa_drawn[0] = refit(page, mfa_card, mfa_cap, mfa_drawn[0])
                 def mfa_refit(): mfa_drawn[0] = refit(page, mfa_card, mfa_cap, mfa_drawn[0])
