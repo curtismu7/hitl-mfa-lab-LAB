@@ -54,7 +54,7 @@ function mockFetch() {
     if (url === "/api/shelf") return json({ shelfUrl: "https://shelf.example:8443" });
     if (override.realOtp && url === "/api/mfa/real-otp/status") return json({ configured: true, inFlight: false });
     if (override.realOtp && url === "/api/mfa/real-otp/challenge") return json({ challenge: { id: "pingone-real", status: "devices" }, amount: 600, devices: [
-      { id: "dev-pingid", type: "PINGID_MOBILE", nickname: "iPhone", delivery: "the PingID app (push, or OTP if enabled)", otpReady: true },
+      { id: "dev-pingid", type: "PINGID_MOBILE", nickname: "iPhone", delivery: "the PingID app (push, or OTP if enabled)", otpReady: true, numberMatching: override.numberMatching ?? false },
       { id: "dev-sms", type: "SMS", nickname: "Mobile 1", delivery: "text message", otpReady: true }] });
     if (override.realOtp && url === "/api/mfa/real-otp/select") return json({ selected: true, amount: 600, push: JSON.parse(opts.body || "{}").deviceId === "dev-pingid" });
     if (override.realOtp && String(url).startsWith("/api/mfa/real-otp/poll")) return json(override.pushApproved ? { status: "approved", receipt: { id: "push-receipt-0001", ttlMs: 300000, kind: "push" } } : { status: "pending" });
@@ -326,7 +326,7 @@ describe("flow and token reel on the transfer gate tab", () => {
 });
 
 describe("PingID push step-up (real, when the PingOne worker is configured)", () => {
-  it("the PUSH scenario shows the device picker, never the mock phone, and verifies as a 'push' credit", async () => {
+  it("the PUSH scenario shows the device picker, never the mock phone, and a PingID pick has no code box", async () => {
     override.realOtp = true;
     await ready();
     await userEvent.click(screen.getByText("PUSH: $150 approved with a PingID push on the phone"));
@@ -337,11 +337,11 @@ describe("PingID push step-up (real, when the PingOne worker is configured)", ()
     expect(screen.getByTestId("real-otp-device-SMS")).toBeDisabled();   // the push beat offers only the PingID app
     expect(screen.getByTestId("real-otp-device-PINGID_MOBILE")).toBeEnabled();
     await userEvent.click(screen.getByTestId("real-otp-device-PINGID_MOBILE"));
-    expect(await screen.findByTestId("mfa-pingid-hint")).toHaveTextContent("approve it there");
-    await userEvent.type(await screen.findByTestId("mfa-otp"), "482913");
-    await userEvent.click(screen.getByTestId("mfa-verify"));
-    await waitFor(() => expect(calls.some((c) => c.url === "/api/mfa/real-otp/verify")).toBe(true));
-    expect(JSON.parse(calls.find((c) => c.url === "/api/mfa/real-otp/verify").opts.body)).toEqual({ otp: "482913", method: "pingid-push" });
+    expect(await screen.findByTestId("mfa-pingid-hint")).toHaveTextContent("Approve it there");
+    expect(screen.queryByTestId("mfa-otp")).toBeNull();          // a push pick has no code box: the approver just approves
+    expect(screen.queryByTestId("mfa-verify")).toBeNull();
+    expect(screen.getByTestId("mfa-restart")).toBeInTheDocument();   // but the beat can be started over
+    expect(calls.some((c) => c.url === "/api/mfa/real-otp/verify")).toBe(false);
   }, 15000);
 });
 
@@ -357,6 +357,16 @@ describe("PingID push approve (real, approve-only push)", () => {
     override.pushApproved = true;                                      // the approver taps Approve in the app
     await waitFor(() => expect(screen.queryByTestId("mfa-modal")).toBeNull(), { timeout: 8000 });
     expect(calls.some((c) => c.url === "/api/mfa/real-otp/verify")).toBe(false);   // no code was typed
+  }, 20000);
+  it("when the MFA policy has number matching ON, a PingID push pick keeps the code box (and still polls)", async () => {
+    override.realOtp = true; override.numberMatching = true;
+    await ready();
+    await userEvent.click(screen.getByText("PUSH: $150 approved with a PingID push on the phone"));
+    await userEvent.click(await screen.findByTestId("real-otp-device-PINGID_MOBILE"));
+    expect(await screen.findByTestId("mfa-otp")).toBeInTheDocument();
+    expect(screen.getByTestId("mfa-pingid-number-hint")).toHaveTextContent("type the number");
+    expect(screen.queryByTestId("mfa-pingid-hint")).toBeNull();
+    await waitFor(() => expect(calls.some((c) => String(c.url).startsWith("/api/mfa/real-otp/poll"))).toBe(true), { timeout: 6000 });
   }, 20000);
   it("an SMS pick is never polled", async () => {
     override.realOtp = true;

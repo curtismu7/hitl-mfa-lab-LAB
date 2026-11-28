@@ -21,13 +21,14 @@ function fakePingone(t) {
   const calls = [];
   const devices = [
     { id: 'dev-fido2', type: 'FIDO2', status: 'ACTIVE', usableStatus: { status: 'ENABLED' } },
-    { id: 'dev-pingid', type: 'PINGID_MOBILE', status: 'ACTIVE', usableStatus: { status: 'ENABLED' } },
+    { id: 'dev-pingid', type: 'PINGID_MOBILE', status: 'ACTIVE', usableStatus: { status: 'ENABLED' }, application: { id: 'app-1' } },
     { id: 'dev-sms', type: 'SMS', status: 'ACTIVE', usableStatus: { status: 'ENABLED' } },
     { id: 'dev-email', type: 'EMAIL', status: 'ACTIVE', usableStatus: { status: 'ENABLED' } },
   ];
   let daOpen = 0;
   let selected = null;
   let daStatus = 'PUSH_CONFIRMATION_REQUIRED';
+  let policies = () => R(200, { _embedded: { deviceAuthenticationPolicies: [{ id: 'pol-1', default: true, mobile: { applications: [{ id: 'app-1', push: { enabled: true, numberMatching: { enabled: false } }, otp: { enabled: true } }] } }] } });
   let otpCheckResult = () => ({ status: 200, ok: true, json: { status: 'COMPLETED' } });
   const json = async () => ({ access_token: 'tok', expires_in: 3600 });
   const fetchImpl = async (url, opts = {}) => {
@@ -49,11 +50,12 @@ function fakePingone(t) {
       return R(200, { _embedded: { devices: [{ type: 'FIDO2' }] } }); // no otp.check
     }
     if (u.match(/\/deviceAuthentications\/da-\d+$/) && (opts.method || 'GET') === 'GET') return R(200, { status: daStatus });
+    if (u.endsWith('/deviceAuthenticationPolicies')) return policies();
     if (u.endsWith('/otp.check')) { const r = otpCheckResult(); return { ...r, text: r.text || (async () => JSON.stringify(r.json)) }; }
     t && t();
     return { status: 404, ok: false, json: null, text: 'unexpected ' + u };
   };
-  return { fetchImpl, calls, devices, setSelected: (v) => { selected = v; }, setDaStatus: (v) => { daStatus = v; }, setOtpCheck: (fn) => { otpCheckResult = fn; }, getSelected: () => selected };
+  return { fetchImpl, calls, devices, setSelected: (v) => { selected = v; }, setDaStatus: (v) => { daStatus = v; }, setPolicies: (fn) => { policies = fn; }, setOtpCheck: (fn) => { otpCheckResult = fn; }, getSelected: () => selected };
 }
 
 const mk = (t) => { const f = fakePingone(t); return { f, otp: createPingoneOtp({ env: ENV, fetchImpl: f.fetchImpl }) }; };
@@ -180,4 +182,15 @@ test('push approve: a failed or expired push ends the challenge; SMS and EMAIL a
   const b = mk(); await b.otp.open(150); const sel = await b.otp.select('dev-sms');
   assert.equal(sel.push, false);
   assert.equal((await thrown(() => b.otp.poll())).code, 'otp_no_challenge');
+});
+
+test('number matching: the picker carries the PingID push setting read from the MFA policy (off, on, unreadable)', async () => {
+  const get = async (setup) => { const { f, otp } = mk(); if (setup) setup(f); const r = await otp.open(150); return r.devices; };
+  const off = await get();
+  assert.equal(off.find((d) => d.type === 'PINGID_MOBILE').numberMatching, false);
+  assert.equal('numberMatching' in off.find((d) => d.type === 'SMS'), false);      // only the PingID app has the setting
+  const on = await get((f) => f.setPolicies(() => R(200, { _embedded: { deviceAuthenticationPolicies: [{ default: true, mobile: { applications: [{ id: 'app-1', push: { numberMatching: { enabled: true } } }] } }] } })));
+  assert.equal(on.find((d) => d.type === 'PINGID_MOBILE').numberMatching, true);
+  const denied = await get((f) => f.setPolicies(() => R(403, { code: 'ACCESS_FAILED' })));
+  assert.equal(denied.find((d) => d.type === 'PINGID_MOBILE').numberMatching, null);   // unreadable = unknown, never assumed off
 });

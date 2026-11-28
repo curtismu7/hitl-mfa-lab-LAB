@@ -88,6 +88,16 @@ export function createPingoneOtp({ env = process.env, fetchImpl = (...a) => glob
       if (!user) throw new RealError('otp_user', `user ${cfg.username} not found in the configured environment`, 404);
       const opened = await api('/deviceAuthentications', { method: 'POST', token, body: { user: { id: user.id } } });
       if (!opened.ok || !opened.json?.id) throw new RealError('otp_start', `deviceAuthentication could not start (HTTP ${opened.status})`, 502);
+      // Does this tenant's MFA policy make the PingID push ask for a number (number matching)? Read it from the policy, never guess it from the
+      // device: off = the approver just approves, on (or unreadable) = a number is involved, so the page keeps a code box. Read-only; a failure
+      // here only leaves it unknown.
+      let numberMatchingByApp = {};
+      try {
+        const pol = await api(`${cfg.apiBase}/deviceAuthenticationPolicies`, { token });
+        const list = pol.ok ? (pol.json?._embedded?.deviceAuthenticationPolicies || []) : [];
+        const mine = list.find((p) => p.default) || list[0];
+        for (const a of (mine?.mobile?.applications || [])) if (a?.id && a.push?.numberMatching && typeof a.push.numberMatching.enabled === 'boolean') numberMatchingByApp[a.id] = a.push.numberMatching.enabled;
+      } catch { numberMatchingByApp = {}; }
       const devices = (opened.json._embedded?.devices || [])
         .filter((d) => d.status === 'ACTIVE' && d.usableStatus?.status === 'ENABLED' && d.type !== 'FIDO2') // FIDO2 is an assertion, not a code
         .map((d) => ({
@@ -95,6 +105,7 @@ export function createPingoneOtp({ env = process.env, fetchImpl = (...a) => glob
           // How the code arrives: SMS/EMAIL are sent by PingOne; the PingID app shows push, and OTP if the policy enables it.
           delivery: d.type === 'SMS' ? 'text message' : d.type === 'EMAIL' ? 'email' : 'the PingID app (push, or OTP if enabled)',
           otpReady: d.type === 'SMS' || d.type === 'EMAIL' || d.otpStatus?.status !== 'DISABLED',
+          ...(d.type === 'PINGID_MOBILE' ? { numberMatching: d.application?.id in numberMatchingByApp ? numberMatchingByApp[d.application.id] : null } : {}),
         }));
       if (!devices.length) throw new RealError('otp_device', 'no usable devices for this user — pair one first (see the PingID wizard)', 409);
       challenge = { daId: opened.json.id, amount, startedAt: Date.now() }; // not yet selecting: the picker decides
