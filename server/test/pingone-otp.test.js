@@ -27,6 +27,7 @@ function fakePingone(t) {
   ];
   let daOpen = 0;
   let selected = null;
+  let daStatus = 'PUSH_CONFIRMATION_REQUIRED';
   let otpCheckResult = () => ({ status: 200, ok: true, json: { status: 'COMPLETED' } });
   const json = async () => ({ access_token: 'tok', expires_in: 3600 });
   const fetchImpl = async (url, opts = {}) => {
@@ -44,14 +45,15 @@ function fakePingone(t) {
       selected = parsedBody.device.id;
       if (selected === 'dev-email') return R(200, { _embedded: { devices: [{ type: 'EMAIL' }] }, _links: { 'otp.check': { href: 'https://auth.pingone.com/x/otp.check' } } });
       if (selected === 'dev-sms') return R(200, { _embedded: { devices: [{ type: 'SMS' }] }, _links: { 'otp.check': { href: 'https://auth.pingone.com/x/otp.check' } } });
-      if (selected === 'dev-pingid') return R(200, { _embedded: { devices: [{ type: 'PINGID_MOBILE' }] }, _links: { 'otp.check': { href: 'https://auth.pingone.com/x/otp.check' } } });
+      if (selected === 'dev-pingid') return R(200, { status: 'PUSH_CONFIRMATION_REQUIRED', _embedded: { devices: [{ type: 'PINGID_MOBILE' }] }, _links: { 'otp.check': { href: 'https://auth.pingone.com/x/otp.check' } } });
       return R(200, { _embedded: { devices: [{ type: 'FIDO2' }] } }); // no otp.check
     }
+    if (u.match(/\/deviceAuthentications\/da-\d+$/) && (opts.method || 'GET') === 'GET') return R(200, { status: daStatus });
     if (u.endsWith('/otp.check')) { const r = otpCheckResult(); return { ...r, text: r.text || (async () => JSON.stringify(r.json)) }; }
     t && t();
     return { status: 404, ok: false, json: null, text: 'unexpected ' + u };
   };
-  return { fetchImpl, calls, devices, setSelected: (v) => { selected = v; }, setOtpCheck: (fn) => { otpCheckResult = fn; }, getSelected: () => selected };
+  return { fetchImpl, calls, devices, setSelected: (v) => { selected = v; }, setDaStatus: (v) => { daStatus = v; }, setOtpCheck: (fn) => { otpCheckResult = fn; }, getSelected: () => selected };
 }
 
 const mk = (t) => { const f = fakePingone(t); return { f, otp: createPingoneOtp({ env: ENV, fetchImpl: f.fetchImpl }) }; };
@@ -157,4 +159,25 @@ test('unconfigured env: open refuses with 409 and setup guidance', async () => {
 test('RealError instances carry status; verify failure is not a crash', () => {
   const e = new RealError('otp_x', 'msg', 418);
   assert.equal(e.status, 418); assert.equal(e.code, 'otp_x');
+});
+
+test('push approve: PINGID_MOBILE select reports a push; poll is pending, then approved (COMPLETED) once, and ends the challenge', async () => {
+  const { f, otp } = mk();
+  await otp.open(150);
+  const sel = await otp.select('dev-pingid');
+  assert.equal(sel.push, true);
+  assert.deepEqual(await otp.poll(), { status: 'pending' });
+  assert.equal(otp.inFlight(), true);
+  f.setDaStatus('COMPLETED');
+  assert.deepEqual(await otp.poll(), { status: 'approved', amount: 150 });
+  assert.equal(otp.inFlight(), false);                       // single use: the challenge is gone
+  assert.equal((await thrown(() => otp.poll())).code, 'otp_no_challenge');
+});
+
+test('push approve: a failed or expired push ends the challenge; SMS and EMAIL are not pushes and cannot be polled', async () => {
+  const a = mk(); await a.otp.open(150); await a.otp.select('dev-pingid'); a.f.setDaStatus('EXPIRED');
+  assert.deepEqual(await a.otp.poll(), { status: 'failed' }); assert.equal(a.otp.inFlight(), false);
+  const b = mk(); await b.otp.open(150); const sel = await b.otp.select('dev-sms');
+  assert.equal(sel.push, false);
+  assert.equal((await thrown(() => b.otp.poll())).code, 'otp_no_challenge');
 });

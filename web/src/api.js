@@ -42,6 +42,12 @@ export const verifyMfa = (payload) => postJson("/api/mfa/verify", payload);
 export const startRealOtp = (payload) => postJson("/api/mfa/real-otp/challenge", payload);
 export const selectRealOtpDevice = (payload) => postJson("/api/mfa/real-otp/select", payload);
 export const verifyRealOtp = (payload) => postJson("/api/mfa/real-otp/verify", payload);
+export async function pollRealOtp(method) {
+  const r = await workspaceFetch(`/api/mfa/real-otp/poll${method ? `?method=${encodeURIComponent(method)}` : ""}`, { method: "GET" });
+  let body = {};
+  try { body = await r.json(); } catch { /* not JSON */ }
+  return { ok: r.ok, status: r.status, body };
+}
 export const realOtpStatus = () => getJson("/api/mfa/real-otp/status");
 
 // PingID push (mock): fire the push, poll until the phone answers, and (the mock phone) answer it.
