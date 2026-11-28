@@ -352,7 +352,7 @@ export function createApp({
       // Step 2 of 2: selecting the device delivers the code (SMS texts it, EMAIL mails it, the PingID app shows push/OTP).
       const sel = await pingoneOtp.select(body.deviceId.trim());
       obs(ws, 'real', beat.mfaChallenge({ id: 'pingone-real-selected', amount: null }));
-      return res.json({ selected: true, amount: sel.amount, hint: sel.hint, workspace: ws });
+      return res.json({ selected: true, push: sel.push, amount: sel.amount, hint: sel.hint, workspace: ws });
     } catch (e) {
       if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
       return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
@@ -376,6 +376,21 @@ export function createApp({
       return res.json({ challenge: { id: 'pingone-real', status: 'verified' }, receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
     } catch (e) {
       obs(ws, 'real', beat.mfaCode({ id: 'pingone-real', ok: false }));
+      if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
+      return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
+    }
+  }));
+  api.get('/mfa/real-otp/poll', withWorkspace(async (ws, req, res) => {
+    try {
+      const r = await pingoneOtp.poll();
+      if (r.status !== 'approved') return res.json({ status: r.status, workspace: ws });
+      obs(ws, 'real', beat.mfaCode({ id: 'pingone-real', ok: true }));
+      if (!Number.isFinite(r.amount)) return res.status(409).json({ error: 'otp_amount', detail: 'the challenge carried no amount; start it again' });
+      const v = workspaces.state(ws);
+      const kind = req.query.method === 'pingid-push' ? 'push' : 'stepUp';
+      const receipt = v.receipts.mint({ kind, amount: r.amount, tool: 'create_transfer', taskId: 'pingone-real' });
+      return res.json({ status: 'approved', receipt: { id: receipt.id, ttlMs: v.receipts.ttlMs, kind: receipt.kind }, workspace: ws });
+    } catch (e) {
       if (e instanceof RealError) return res.status(e.status).json({ error: e.code, detail: e.message });
       return res.status(502).json({ error: 'otp_unreachable', detail: 'PingOne could not be reached: ' + String(e && e.message || e).slice(0, 160) });
     }
