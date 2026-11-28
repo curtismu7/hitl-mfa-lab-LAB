@@ -199,8 +199,12 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
     });
   }, [open, amount]);
   if (!open) return null;
+  // The two real beats use different devices: the one-time-code beat takes a code PingOne sends (SMS, EMAIL); the push beat (method "pingid-push") takes the PingID app.
+  const pushBeat = method === "pingid-push";
+  const deviceFits = (d) => (d.type === "PINGID_MOBILE") === pushBeat;
   const pickDevice = async (deviceId) => {
     if (!realOtp || realOtp.selectedDevice) return;
+    if (!deviceFits(realOtp.devices.find((d) => d.id === deviceId) || {})) return;
     setMsg(null);
     setRealOtp((s) => ({ ...s, picking: deviceId }));
     const r = await selectRealOtpDevice({ deviceId }).catch(() => ({ ok: false, body: {} }));
@@ -242,15 +246,19 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
           <>
             {realOtp && !realOtp.selectedDevice ? (
               <>
-                <p><strong>How should the code reach you?</strong> Pick a device; PingOne sends (or shows) the one-time code.</p>
+                {pushBeat
+                  ? <p><strong>This beat is the PingID push.</strong> Only the PingID app is offered; the other devices are greyed out (they belong to the one-time-code beat).</p>
+                  : <p><strong>This beat is a one-time code.</strong> Pick the text message or the email; PingOne sends the code. The PingID app is greyed out: it is the next beat (the push).</p>}
                 <div className="modal__actions" style={{ flexDirection: "column", alignItems: "stretch" }} data-testid="real-otp-devices">
                   {realOtp.devices.map((d) => (
-                    <button key={d.id} type="button" data-testid={`real-otp-device-${d.type}`} disabled={realOtp.picking}
-                      onClick={() => pickDevice(d.id)}>
-                      <strong>{d.type}</strong>{d.nickname ? ` — ${d.nickname}` : ""} <span className="muted">({d.delivery})</span>
+                    <button key={d.id} type="button" data-testid={`real-otp-device-${d.type}`} disabled={realOtp.picking || !deviceFits(d)}
+                      data-beat-disabled={deviceFits(d) ? undefined : "true"} onClick={() => pickDevice(d.id)}>
+                      <strong>{d.type}</strong>{d.nickname ? ` — ${d.nickname}` : ""} <span className="muted">({deviceFits(d) ? d.delivery : pushBeat ? "not used for the push beat" : "used in the push beat"})</span>
                     </button>
                   ))}
                 </div>
+                {!realOtp.devices.some(deviceFits) && <p className="field-error" role="alert" data-testid="real-otp-no-device">
+                  {pushBeat ? "This user has no PingID app device to push to. Pair one in the PingID wizard." : "This user has no text-message or email device for the one-time code. Add one in PingOne."}</p>}
                 <p className="muted">The credit is amount-bound to ${realOtp.amount}: it discharges this call only.</p>
               </>
             ) : realOtp ? (

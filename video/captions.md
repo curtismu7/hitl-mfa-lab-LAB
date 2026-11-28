@@ -57,7 +57,7 @@ The lab's banner says which is which before anything is sent:
 - The hold's answer on the wire: HTTP 403 with a JSON-RPC error carrying pending_approval and an instruction id
 - The gateway call itself, to the Privilege gateway door configured in this lab
 - The consent approval: a human presses Approve, minting a single-use, amount-bound receipt
-- The MFA step-up: a human picks a device, receives a real PingOne code (text, email, or the PingID app), and types it
+- The MFA step-up: a human picks a device, receives a real PingOne code (text or email; PingID is the next beat), and types it
 - The PingID push: the approver decides on their own phone
 
 ## Column B: What is simulated
@@ -168,7 +168,7 @@ Use case 1 — consent: a human approves the ask
 # Step: mfa_video
 
 ## Text
-Use case two — step-up MFA. At $600 the call clears the MFA bar, and step-up outranks the consent gate: a modal asks the person to pick a device — a text, an email, or the PingID app — and the one-time code arrives on it. The person types the code they received; PingOne checks it, and the policy re-evaluates to PERMIT. This is the real PingOne MFA path, not a staged code.
+Use case two — step-up MFA. At $600 the call clears the MFA bar, and step-up outranks the consent gate: a modal asks the person to pick a device — a text or an email; the PingID app is greyed out here, it is the next use case — and the one-time code arrives on it. The person types the code they received; PingOne checks it, and the policy re-evaluates to PERMIT. This is the real PingOne MFA path, not a staged code.
 
 ## Title
 Use case 2 — MFA: the person proves presence

@@ -210,16 +210,18 @@ describe("transfer gate tab", () => {
     await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"));
     expect(screen.getByTestId("receipt")).toHaveTextContent("hitl-receipt-0001");
   }, 15000);
-  it("real OTP: picking the PingID device says what to do when no push arrives; picking SMS does not", async () => {
+  it("real OTP beat: only the text/email devices can be picked, PingID is greyed out (it is the next beat)", async () => {
     override.realOtp = true;
     await ready();
     await userEvent.clear(screen.getByTestId("call-amount"));
     await userEvent.type(screen.getByTestId("call-amount"), "600");
     await userEvent.click(screen.getByTestId("call-run"));
-    await userEvent.click(await screen.findByTestId("real-otp-device-PINGID_MOBILE"));
-    expect(await screen.findByTestId("mfa-pingid-hint")).toHaveTextContent("No push? Open the PingID app");
-    await userEvent.click(screen.getByTestId("mfa-restart"));
-    await userEvent.click(await screen.findByTestId("real-otp-device-SMS"));
+    const pingid = await screen.findByTestId("real-otp-device-PINGID_MOBILE");
+    expect(pingid).toBeDisabled();
+    expect(screen.getByTestId("real-otp-device-SMS")).toBeEnabled();
+    await userEvent.click(pingid);
+    expect(calls.some((c) => c.url === "/api/mfa/real-otp/select")).toBe(false);   // a greyed-out device never reaches PingOne
+    await userEvent.click(screen.getByTestId("real-otp-device-SMS"));
     await waitFor(() => expect(screen.getByTestId("mfa-otp")).toBeInTheDocument());
     expect(screen.queryByTestId("mfa-pingid-hint")).toBeNull();
   }, 15000);
@@ -331,7 +333,10 @@ describe("PingID push step-up (real, when the PingOne worker is configured)", ()
     expect(screen.getByTestId("mfa-modal")).toHaveTextContent("PingID push approval required");
     expect(screen.queryByTestId("push-phone")).toBeNull();
     expect(calls.some((c) => c.url === "/api/mfa/push")).toBe(false);   // the mock push endpoint is never called in Real mode
+    expect(screen.getByTestId("real-otp-device-SMS")).toBeDisabled();   // the push beat offers only the PingID app
+    expect(screen.getByTestId("real-otp-device-PINGID_MOBILE")).toBeEnabled();
     await userEvent.click(screen.getByTestId("real-otp-device-PINGID_MOBILE"));
+    expect(await screen.findByTestId("mfa-pingid-hint")).toHaveTextContent("No push? Open the PingID app");
     await userEvent.type(await screen.findByTestId("mfa-otp"), "482913");
     await userEvent.click(screen.getByTestId("mfa-verify"));
     await waitFor(() => expect(calls.some((c) => c.url === "/api/mfa/real-otp/verify")).toBe(true));
