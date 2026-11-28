@@ -150,6 +150,13 @@ class Wording(unittest.TestCase):
         broken = {**self.STORY, "slides": {"x": {"title": "t"}}}
         self.assertRaises(ValueError, captions.from_story, broken)
 
+class TakePyDrawsTheMfaBoxAfterTheCardHasItsContent(unittest.TestCase):
+    def test_take_py_waits_for_the_picker_or_code_box_then_keeps_the_box_fitted(self):
+        src = (Path(__file__).resolve().parent / "take.py").read_text()
+        i = src.index('mock_chip("mfa-step-up")'); block = src[i:src.index("Use case 3", i)]
+        self.assertLess(block.index("real-otp-devices"), block.index("bubble(3"))      # the box is drawn only once the card is full size
+        self.assertIn("refit(", block); self.assertIn("on_tick=mfa_refit", block)       # and redrawn when the owner's pick changes the card
+
 class TakePyHasNoCopyOfSharedLogic(unittest.TestCase):
     def test_take_py_uses_the_bridge_and_defines_no_overlay_or_hold_formula_of_its_own(self):
         src = (Path(__file__).resolve().parent / "take.py").read_text()
@@ -194,6 +201,24 @@ class InABrowser(unittest.TestCase):
         self.page.evaluate("() => { document.getElementById('t').style.top = '700px'; window.dispatchEvent(new Event('resize')); document.dispatchEvent(new Event('scroll')); }")
         self.page.wait_for_timeout(120)
         self.assertEqual(self.page.evaluate("() => [document.querySelector('.story-hl').style.top, document.querySelector('.story-bub').style.top]"), before)
+
+    def test_a_card_that_grows_leaves_the_red_box_short_until_refit_draws_it_again(self):
+        # The MFA modal's card starts as one short line, then becomes the device picker: the take's overlay draws once, so without refit the box stays the short size.
+        self.page.evaluate("() => { const c = document.createElement('div'); c.id = 'card'; c.style.cssText = 'position:absolute;left:300px;top:100px;width:400px;height:60px'; document.body.append(c); }")
+        cap = dict(n=3, total=12, title="MFA", text="x", target="#card", lines=None, prefer="left", place=None)
+        drawn = story_bridge.box_key(self.page, "#card"); self.assertEqual(drawn, "300,100,400,60")
+        self.page.evaluate("o => window.__cm.cap(o)", cap)
+        hl_h = lambda: self.page.evaluate("() => parseInt(document.querySelector('.story-hl').style.height)")
+        self.assertEqual(hl_h(), 60 + 10)
+        self.page.evaluate("() => { document.getElementById('card').style.height = '340px'; }")
+        self.page.wait_for_timeout(150)
+        self.assertEqual(hl_h(), 60 + 10)                                  # the video's overlay never follows: the box is now too short
+        self.assertEqual(story_bridge.refit(self.page, "#card", cap, drawn), "300,100,400,340")
+        self.assertEqual(hl_h(), 340 + 10)                                 # refit drew it around the whole card
+        again = story_bridge.refit(self.page, "#card", cap, "300,100,400,340")
+        self.assertEqual(again, "300,100,400,340")                         # unchanged: nothing is redrawn
+        self.page.evaluate("() => document.getElementById('card').remove()")
+        self.assertEqual(story_bridge.refit(self.page, "#card", cap, "300,100,400,340"), "300,100,400,340")   # a target that is gone is left alone
 
     def test_stacking_is_bubble_then_pill_then_slide_as_before(self):
         self.page.evaluate("o => window.__cm.cap(o)", dict(n=1, total=1, title="t", text="x", target=None, lines=None, prefer=None, place=None))
