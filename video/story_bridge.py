@@ -61,3 +61,16 @@ def hold_bubble(page, text, lines=None):
 def hold_slide(page, payload):
     """Seconds a slide is held: the shared formula (the video's own, capped at 10)."""
     return float(page.evaluate("(p) => window.__storyHold.slideHold(p)", payload))
+
+def box_key(page, selector):
+    """The target's box as a string ('' when it is not on the page): what the red box was drawn around. The video's overlay draws once (follow: false), so take.py compares this."""
+    return page.evaluate("s => { const e = document.querySelector(s); if (!e) return ''; const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); }", selector)
+
+def refit(page, selector, cap_opts, drawn):
+    """Draw the caption again when its target's box is no longer the one it was drawn around (a modal that finished loading, or went from the device picker to the code box).
+    Returns the box now drawn. A target that is gone is left alone: the take clears the caption itself."""
+    now = box_key(page, selector)
+    if now and now != drawn:
+        page.evaluate("o => window.__cm.cap(o)", cap_opts)
+        return now
+    return drawn

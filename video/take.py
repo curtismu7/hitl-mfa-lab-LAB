@@ -32,7 +32,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 import base64
 import captions
-from story_bridge import overlay_script, slide_payload, hold_bubble, hold_slide
+from story_bridge import overlay_script, slide_payload, hold_bubble, hold_slide, box_key, refit
 
 WORK = Path(sys.argv[1] if len(sys.argv) > 1 else "take-work").resolve()
 MONITOR = os.environ.get("MONITOR", "medium")        # "medium" (an external monitor) or "laptop" (the built-in display)
@@ -145,7 +145,7 @@ def first_sentence(s, limit=150):
     s = s[:cut + 1] if cut > 0 else s
     return s if len(s) <= limit else s[:limit].rsplit(" ", 1)[0] + "..."
 
-def wait_for_owner(page, selector, what, timeout_s=None):
+def wait_for_owner(page, selector, what, timeout_s=None, on_tick=None):
     """A human act: wait until the element the owner must press is GONE (modal closed / step advanced).
     The take does not press it — the owner drives on camera. Abort via the abort flag or Ctrl-C."""
     limit = timeout_s or APPROVAL_WAIT_S
@@ -157,6 +157,7 @@ def wait_for_owner(page, selector, what, timeout_s=None):
         if not page.locator(selector).count():
             log("the owner acted (", what, "is gone )")
             return
+        if on_tick: on_tick()
         time.sleep(1)
     raise RuntimeError(f"the owner did not act within {limit}s: {what} was never pressed")
 
@@ -394,13 +395,22 @@ def main():
                 # real code, and types it (the real path when the PingOne worker is configured; demo code otherwise).
                 mock_chip("mfa-step-up")
                 page.wait_for_selector('[data-testid=mfa-modal]', timeout=60000)
+                # Wait for the card to have its real content (the device picker, or the code box in Mock) before the red box is drawn around it: the real
+                # challenge takes a second or two to start, and until then the card is a short "Starting the challenge..." line. The take's overlay draws once.
+                page.wait_for_selector('[data-testid=real-otp-devices], [data-testid=mfa-otp]', timeout=60000)
                 page.wait_for_timeout(600)
                 # The floating panel's fd-body scrolls (overflow:auto) and the panel box gets viewport-clipped,
                 # so the red box on the whole modal cut off before Verify/Dismiss. Highlight the card that
                 # actually holds the device picker / OTP field / buttons instead.
-                bubble(3, STEPS["mfa_video"]["title"], STEPS["mfa_video"]["text"], '[data-testid=mfa-modal] .modal__card', prefer="left",
-                       lines=["the owner picks a device and types the code that arrives"])
-                wait_for_owner(page, '[data-testid=mfa-verify]', "the MFA Verify button (after picking a device and typing the code)")
+                mfa_card = '[data-testid=mfa-modal] .modal__card'
+                mfa_cap = dict(n=3, total=TOTAL, title=STEPS["mfa_video"]["title"], text=STEPS["mfa_video"]["text"], target=mfa_card, lines=["the owner picks a device and types the code that arrives"], prefer="left")
+                mfa_drawn = [box_key(page, mfa_card)]   # a list: the tick below updates it
+                bubble(3, mfa_cap["title"], mfa_cap["text"], mfa_card, prefer="left", lines=mfa_cap["lines"])
+                # The card changes size when the owner picks a device (picker -> code box): draw the box again around what is there now, before and while we wait.
+                mfa_drawn[0] = refit(page, mfa_card, mfa_cap, mfa_drawn[0])
+                def mfa_refit(): mfa_drawn[0] = refit(page, mfa_card, mfa_cap, mfa_drawn[0])
+                wait_for_owner(page, '[data-testid=mfa-verify]', "the MFA Verify button (after picking a device and typing the code)",
+                               on_tick=mfa_refit)
                 page.wait_for_function("(document.querySelector('[data-testid=verdict]')?.textContent || '').includes('PERMITTED')", timeout=60000)
                 page.wait_for_timeout(1200)
                 page.evaluate("() => window.__cm.clear()")
