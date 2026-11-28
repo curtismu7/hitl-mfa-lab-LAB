@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, lazy, Suspense } from "react";
 import PolicyGate from "./components/PolicyGate";
 import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
+import HelpDialog from "./help-dialog/HelpDialog";
+import { HELP_SECTIONS } from "./helpContent";
 import ShelfLink from "./components/ShelfLink";
 import VerifyMark from "./components/VerifyMark.jsx";
 import TopMenu from "./top-menu/TopMenu";
@@ -46,6 +48,7 @@ export default function App() {
   const [tab, setTab] = useState(hashParts().tab);
   const [requested, setRequested] = useState(() => hashParts().scenario || scenarioFor(handoff));
   const [presenter, setPresenter] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [storyOn, setStoryOn] = useState(false);
   const [toggleKey, setToggleKey] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
@@ -115,7 +118,7 @@ export default function App() {
           vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["retail"] }}
           present={{ active: presenter, onToggle: () => setPresenter((v) => !v) }}
           talkTrack={{ active: tab === "talk", onToggle: () => select("talk") }}
-          help={{ href: "https://github.com/curtismu7/hitl-mfa-lab-LAB#readme" }}
+          help={{ onClick: () => setHelpOpen(true), title: "What this lab is, and what is simulated" }}
           version={info?.version || null}
           onReset={reset}
           extra={<StoryToggle key={toggleKey} prefix={STORY_PREFIX} onChange={setStoryOn} />}
@@ -146,6 +149,7 @@ export default function App() {
           )}
         </div>
       </main>
+      <HelpDialog isOpen={helpOpen} onClose={() => setHelpOpen(false)} sections={HELP_SECTIONS} docsUrl="https://github.com/curtismu7/hitl-mfa-lab-LAB#readme" />
       {storyOn && !presenter ? (
         <StoryBoundary onExit={leaveStory}>
           <Suspense fallback={null}>
