@@ -7,14 +7,23 @@
 //   PassportActions the context an expanded box uses: open another box, close itself, make a link to itself
 //   FitOpen         brings an expanded box fully into view; collapsing it fits the whole diagram again
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { BaseEdge, ViewportPortal, getBezierPath, useReactFlow, useStore } from "@xyflow/react";
+import { BaseEdge, ViewportPortal, getBezierPath, useReactFlow, useStore, Position } from "@xyflow/react";
 import { placeLabels } from "./diagramKit.js";
 
 /* ---------------------------------------------------------------- the arrow */
 
 /** The curve only. An SVG label would sit under the boxes, so the label is not drawn here. Register as edgeTypes={{ arrow: ArrowNoLabel }}. */
 export function ArrowNoLabel({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data: _data, label: _label, labelX: _lx, labelY: _ly, ...rest }) {
-  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  // A detour routed under a box (bottom -> bottom between boxes in the same row) would otherwise hug the box's
+  // bottom edge: bezier sag is derived from the vertical gap, which is ~0 there, so the arrow reads as crossing it.
+  // Both endpoints drop by DETOUR_SAG, so the curve dips clearly below anything on its straight line.
+  const DETOUR_SAG = 44;
+  const under = sourcePosition === Position.Bottom && targetPosition === Position.Bottom;
+  const [path] = getBezierPath({
+    sourceX, sourceY: sourceY + (under ? DETOUR_SAG : 0),
+    targetX, targetY: targetY + (under ? DETOUR_SAG : 0),
+    sourcePosition, targetPosition,
+  });
   return <BaseEdge path={path} {...rest} />;
 }
 

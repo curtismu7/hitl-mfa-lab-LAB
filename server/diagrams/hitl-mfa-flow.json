@@ -62,7 +62,7 @@
       "label": "Transfer executes (receipt required)",
       "group": "resource",
       "x": 900,
-      "y": 240
+      "y": 80
     },
     {
       "id": "approver",
