@@ -657,6 +657,14 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
   // retries the same call with the instruction id every few seconds (a still-held call answers the same hold) until it runs, is refused or lapses.
   const heldId = realActive && run?.real && run?.error === "pending_approval" ? run.approval?.instruction_id || null : null;
   const heldExpires = heldId ? run.approval?.expires_at || null : null;
+  // While the real hold waits, the standard mock phone shows the PingID push beat on screen (the demo person still
+  // answers the real push on their real phone; this mock is illustrative so the demo never shares a real phone).
+  const [pushPhoneOpen, setPushPhoneOpen] = useState(false);
+  const pushPhoneSeen = useRef(null);
+  useEffect(() => {
+    if (heldId && pushPhoneSeen.current !== heldId) { pushPhoneSeen.current = heldId; setPushPhoneOpen(true); }
+    if (!heldId) { pushPhoneSeen.current = null; setPushPhoneOpen(false); }
+  }, [heldId]);
   useEffect(() => { setRealWait(null); }, [heldId]);
   useEffect(() => {
     if (!heldId || realWait?.stopped) return undefined;
@@ -729,6 +737,17 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
             <p className="muted">Then press <strong>Send the real call</strong>. Expect a hold (<code>pending_approval</code> with an instruction id). Privilege then sends the PingID push to the approvers' phones: approve it there. The lab retries by itself every 3 seconds until the call runs, is refused or the hold lapses. If no push arrives (tenant MFA off), approve in <strong>HITL Requests</strong>; the retry still picks it up.</p>
             {/* ui-pattern: allow P9 only shown while the scenario is Real, when the mock AgentCall (the other primary) is not rendered */}
             <button type="button" className="primary" data-testid="real-call" disabled={realBusy} onClick={() => realCall(null)}>Send the real call</button>
+            {heldId && !realWait?.lapsed && !realWait?.stopped && pushPhoneOpen && (
+              <PhoneDialog isOpen onClose={() => setPushPhoneOpen(false)} title="PingID — the approver's phone (illustrative)" testId="real-push-phone" singletonKey="real-push-phone">
+                <p className="phone__app">PingID</p>
+                <p className="phone__msg">Are you trying to transfer funds? Approve the push on your real phone.</p>
+                <p className="muted" data-testid="real-push-phone-note">Illustrative: the real approval happens on the approver's actual device. This mock closes when the push is answered.</p>
+                <div className="modal__actions">
+                  <span className="tag tag--warn" data-testid="real-push-phone-waiting">Waiting for the real approval…</span>
+                  <button type="button" className="link" onClick={() => setPushPhoneOpen(false)}>Hide</button>
+                </div>
+              </PhoneDialog>
+            )}
             {heldId && (
               <p className="muted" role="status" data-testid="real-waiting">
                 {realWait?.lapsed ? "The hold lapsed before anyone approved it. Press Send the real call for a fresh hold."
