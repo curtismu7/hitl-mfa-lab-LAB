@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { beatOf, diagramSteps, hopSteps, nextTrail, nowLine, realRun, reelCards } from "./liveFlow";
+import { beatOf, diagramSteps, hopCalls, hopSteps, nextTrail, nowLine, realRun, reelCards } from "./liveFlow";
 
 const hop = (n, from, to, label) => ({ n, from, to, label });
+const hopWire = (n, from, to, label) => ({ n, from, to, label, request: `POST /x hop ${n}\n\n{"n":${n}}`, response: `HTTP/1.1 200\n\n{"ok":true}` });
 const NODES = ["agent", "policy", "consent", "mfa", "phone", "transfer"];
 const hitl = { decision: "HITL", error: "mcp_hitl_required", challengeId: "consent-1", tool: "create_transfer", amount: 300, hops: [hop(1, "agent", "policy", "Agent attempts the transfer"), hop(2, "policy", "policy", "Gate evaluates"), hop(3, "policy", "human", "HITL_CONSENT: the agent must pause for a human")] };
 const retried = { decision: "PERMIT", receipt: "hitl-receipt-0001", receiptKind: "hitl", tool: "create_transfer", amount: 300, hops: [hop(1, "agent", "policy", "Agent attempts the transfer"), hop(2, "policy", "policy", "Gate evaluates"), hop(3, "policy", "transfer", "Receipt presented: the transfer executes")] };
@@ -59,6 +60,34 @@ describe("nextTrail + diagramSteps", () => {
     const trimmed = diagramSteps(nextTrail([], hitl, true), hitl, ["agent", "policy"]);
     expect(trimmed.steps).toHaveLength(1);
     expect(diagramSteps([], null, NODES)).toEqual({ steps: [], current: -1 });
+  });
+  it("each walked arrow carries its run's hop (request/response) for the expanded box; ghost arrows carry none", () => {
+    const run = { decision: "HITL", error: "mcp_hitl_required", hops: [hopWire(1, "agent", "policy", "Agent attempts"), hop(2, "policy", "policy", "Gate evaluates"), hopWire(3, "policy", "human", "HITL_CONSENT: pause")] };
+    const d = diagramSteps(nextTrail([], run, true), run, NODES);
+    const walked = d.steps.filter((s) => !s.ghost);
+    expect(walked.map((s) => `${s.from}>${s.to}`)).toEqual(["agent>policy", "policy>consent"]);
+    expect(walked[0].hop).toMatchObject({ title: "Agent attempts", verdict: "held" }); // arrow 1 = hop 1
+    expect(walked[0].hop.request).toContain("hop 1");
+    expect(walked[1].hop.title).toBe("HITL_CONSENT"); // arrow 2 = hop 3 (hop 2 stayed on one box, so it is neither an arrow nor a call)
+    expect(d.steps.at(-1).ghost).toBe(true); expect(d.steps.at(-1).hop).toBeUndefined();
+  });
+});
+
+describe("hopCalls", () => {
+  it("one entry per arrow hop, mapped to the diagram boxes, with the run's verdict and the raw wire", () => {
+    const calls = hopCalls({ decision: "PERMIT", hops: [hopWire(1, "agent", "policy", "Agent attempts the transfer"), hop(2, "policy", "policy", "Gate evaluates"), hopWire(3, "policy", "transfer", "Receipt presented")] });
+    expect(calls.map((c) => `${c.from}>${c.to}`)).toEqual(["agent>policy", "policy>transfer"]);
+    expect(calls[0].hop).toMatchObject({ title: "Agent attempts the transfer", verdict: "ok" });
+    expect(calls[0].hop.response).toContain("HTTP/1.1 200");
+  });
+  it("a DENY run marks every arrow deny; a paused run marks held", () => {
+    const deny = { decision: "DENY", hops: [hopWire(1, "agent", "policy", "Agent attempts")] };
+    expect(hopCalls(deny)[0].hop.verdict).toBe("deny");
+    expect(hopCalls(hitl)[0].hop.verdict).toBe("held");
+  });
+  it("a run with no hops (or no run) yields none", () => {
+    expect(hopCalls(null)).toEqual([]);
+    expect(hopCalls({ decision: "PERMIT" })).toEqual([]);
   });
 });
 

@@ -8,6 +8,7 @@ import "./PatternDiagram.css";
 import { ArrowNoLabel, EdgeLabels, FitOpen, Passport, PassportActions } from "../diagram-kit/DiagramKit.jsx";
 import { boxPassport, sidePoint } from "../diagram-kit/diagramKit.js";
 import "../diagram-kit/diagram-kit.css";
+import Json from "./JsonPane";
 
 const FIT = { padding: 0.08 };
 const HANDLES = [["t", Position.Top], ["b", Position.Bottom], ["l", Position.Left], ["r", Position.Right]];
@@ -22,7 +23,7 @@ function Box({ data }) {
         </span>
       ))}
       {data.label}
-      {data.passport && <Passport p={data.passport} />}
+      {data.passport && <Passport p={data.passport} JsonView={Json} />}
     </div>
   );
 }
@@ -116,8 +117,12 @@ export default function PatternDiagram({ pattern, resetSignal = 0, liveStep = nu
   const walker = useDiagramStepper(pattern.steps.length);
   const live = liveStep !== null;
   const stepper = useMemo(() => (live ? { ...walker, step: liveStep, active: liveStep >= 0 } : walker), [live, liveStep, walker]);
-  // The pattern as a graph (boxes and arrows) for the box details; a box's kind is its group.
-  const graph = useMemo(() => ({ nodes: pattern.nodes.map((n) => ({ id: n.id, label: n.label, group: n.kind })), edges: pattern.steps.map((st, i) => ({ source: st.from, target: st.to, label: `${i + 1}. ${st.label}` })) }), [pattern]);
+  // The pattern as a graph (boxes and arrows) for the box details; a box's kind is its group. An arrow's hop (live runs only) is
+  // the API call the expanded box shows: the run's raw request/response, as the server returned them.
+  const graph = useMemo(() => ({
+    nodes: pattern.nodes.map((n) => ({ id: n.id, label: n.label, group: n.kind })),
+    edges: pattern.steps.map((st, i) => ({ id: `e${i}`, source: st.from, target: st.to, label: `${i + 1}. ${st.label}`, hop: st.hop ?? null })),
+  }), [pattern]);
   const [open, setOpen] = useState(() => { const box = new URLSearchParams(window.location.search).get("box"); return box && pattern.nodes.some((n) => n.id === box) ? box : null; }); // a shared link's box
   const onMove = useCallback((id, p) => setPositions((cur) => ({ ...cur, [id]: { x: p.x, y: p.y } })), []);
   const step = stepper.step >= 0 ? pattern.steps[stepper.step] : null;

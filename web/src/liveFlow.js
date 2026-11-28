@@ -34,6 +34,21 @@ export function hopSteps(run) {
     .filter((s) => s.from !== s.to);
 }
 
+/**
+ * The run's hops as the kit's call data: one entry per ARROW (the same steps hopSteps returns, same order),
+ * carrying the hop's raw request/response so the expanded box shows what went over the wire. The hop's
+ * verdict is what the run's own decision line says (the gate's answer), not a per-check claim.
+ */
+export function hopCalls(run) {
+  if (!run || !Array.isArray(run.hops)) return [];
+  const beat = beatOf(run);
+  const node = (id) => (id === "human" ? BEAT_NODE[beat] || "consent" : id === "idp" ? "phone" : id);
+  const verdict = run.decision === "PERMIT" ? "ok" : run.decision === "DENY" || run.decision === "REFUSED" ? "deny" : "held";
+  return run.hops
+    .map((h) => ({ from: node(h.from), to: node(h.to), hop: { title: shortLabel(h.label), fact: h.label, verdict, request: h.request, response: h.response } }))
+    .filter((c) => c.from !== c.to);
+}
+
 /** The trail of arrows walked so far. A fresh call starts it over; the retry after a human beat adds its last arrow (the transfer). */
 export function nextTrail(trail, run, fresh) {
   const steps = hopSteps(run);
@@ -42,15 +57,19 @@ export function nextTrail(trail, run, fresh) {
   return [...trail, ...steps.slice(-1)];
 }
 
-/** What the diagram draws: the trail, then (while paused at a human beat) the one arrow that comes next, dimmed. */
+/** What the diagram draws: the trail, then (while paused at a human beat) the one arrow that comes next, dimmed.
+ * Each walked arrow carries its `hop` (the raw request/response of that run's hop) so the expanded box shows the call. */
 export function diagramSteps(trail, run, nodeIds = null) {
   // An arrow needs both of its boxes: a diagram without one of them (another vertical, a trimmed file) simply draws fewer arrows.
   const has = (s) => !nodeIds || (nodeIds.includes(s.from) && nodeIds.includes(s.to));
+  const calls = hopCalls(run);
   const walked = trail.filter(has);
   if (!walked.length) return { steps: [], current: -1 };
   // Paused at a human beat: the arrow the run is waiting on pulses (PatternDiagram), so the diagram visibly updates live.
+  // The trail's arrows match the run's hop arrows in order (the trail is built from them), so the i-th walked arrow gets the i-th call.
+  let ci = 0;
   const waiting = isPaused(run) ? walked.length - 1 : -1;
-  const steps = walked.map((s, i) => (i === waiting ? { ...s, waiting: true } : s));
+  const steps = walked.map((s, i) => ({ ...s, waiting: i === waiting, hop: calls[ci++]?.hop ?? null }));
   const next = { from: "policy", to: "transfer", label: "Receipt presented", say: "Receipt presented: the retried call executes", ghost: true };
   const pingid = { from: "approver", to: "pingid", label: "PingID confirms the approver", say: "PingID confirms the approver", ghost: true };
   if (isPaused(run)) for (const g of run.error === "pending_approval" ? [pingid, next] : [next]) if (has(g)) steps.push(g);
