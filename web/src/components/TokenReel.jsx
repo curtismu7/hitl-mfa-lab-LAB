@@ -26,7 +26,7 @@ export default function TokenReel({ cards }) {
           {c.note && <p className="muted reel__note">{c.note}</p>}
           <details>
             <summary>Raw</summary>
-            <Json value={c.fields} label={`${c.title} (mock)`} />
+            <Json value={c.fields} label={`${c.title}${c.tag === "REAL" || c.tag === "INFERRED" ? "" : " (mock)"}`} />
           </details>
         </li>
       ))}

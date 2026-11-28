@@ -8,6 +8,10 @@
 .pat-edge path { stroke: var(--th-text-muted); stroke-width: 1.6; }
 .pat-edge--cp path { stroke: var(--th-accent); }
 .pat-edge--now path { stroke-width: 3.2; }
+/* Live waiting state: the arrow the run is paused on pulses, so "the diagram is updating as things execute" is visible
+   while the lab waits (the approver deciding, the retry in flight). PatternDiagram sets --now-pulsing on the canvas. */
+.pat-canvas[data-now-pulsing="true"] .pat-edge--now path { animation: pat-pulse 1.4s ease-in-out infinite; }
+@keyframes pat-pulse { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.35; } }
 .pat-edge--dim { opacity: 0.3; }
 .pat-reset { margin: 4px 0 8px; }
 .pat-json { margin: 8px 0 0; padding: 10px; background: var(--th-bg-inset); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--font-size-sm); }

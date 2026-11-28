@@ -93,7 +93,7 @@ function Canvas({ pattern, graph, positions, onMove, stepper, open, setOpen, com
     link: (id) => { const u = new URL(window.location.href); u.searchParams.set("box", id); return u.toString(); },
   }), [setOpen]);
   return (
-    <div ref={ref} className="pat-canvas" data-testid="pattern-canvas">
+    <div ref={ref} className="pat-canvas" data-testid="pattern-canvas" data-now-pulsing={pattern.pulsing ? "true" : undefined}>
       <PassportActions.Provider value={actions}>
         <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={FIT} nodesConnectable={false} minZoom={0.3} zoomOnScroll={!compact} preventScrolling={!compact}
           onNodeClick={(_, n) => setOpen((o) => (o === n.id ? null : n.id))} onPaneClick={() => setOpen(null)}
@@ -125,12 +125,16 @@ export default function PatternDiagram({ pattern, resetSignal = 0, liveStep = nu
   const reset = useCallback(() => { walker.stop(); setPositions(initial); setOpen(null); setTimeout(() => window.dispatchEvent(new Event(REFIT_EVENT)), 0); }, [walker.stop, initial]); // eslint-disable-line react-hooks/exhaustive-deps
   const seen = useRef(resetSignal);
   useEffect(() => { if (seen.current !== resetSignal) { seen.current = resetSignal; reset(); } }, [resetSignal, reset]);
+  // Live and paused at a human beat: the current arrow pulses, so the diagram visibly says "waiting here, updating live".
+  const pulsing = live && stepper.step >= 0 && !pattern.steps[stepper.step]?.ghost && !!pattern.steps[stepper.step]?.waiting;
+  const drawn = useMemo(() => (pulsing ? { ...pattern, pulsing } : pattern), [pattern, pulsing]);
   return (
     <section className={`pat${compact ? " pat--compact" : ""}`} aria-label={pattern.title}>
       {!live && <h2 className="pat__title">{pattern.title}</h2>}
       {!live && <p className="intro">{pattern.intro}</p>}
       {!live && <DiagramStepBar stepper={stepper} caption={step ? step.label : ""} testId="pattern-step-bar" />}
       {!live && <button type="button" className="pat-reset" onClick={reset} data-testid="pattern-reset">Reset positions and walkthrough</button>}
+      {live && <span hidden data-testid="diagram-pulsing">{pulsing ? "true" : "false"}</span>}
       {step && !live && (
         <article className="track__now" data-testid="pattern-now">
           <h3>Step {stepper.step + 1}: {step.label}</h3>
@@ -138,7 +142,7 @@ export default function PatternDiagram({ pattern, resetSignal = 0, liveStep = nu
         </article>
       )}
       <ReactFlowProvider>
-        <Canvas pattern={pattern} graph={graph} positions={positions} onMove={onMove} stepper={stepper} open={open} setOpen={setOpen} compact={compact} />
+        <Canvas pattern={drawn} graph={graph} positions={positions} onMove={onMove} stepper={stepper} open={open} setOpen={setOpen} compact={compact} />
       </ReactFlowProvider>
       {live ? <p className="keys">Drag any box. <button type="button" className="link" onClick={reset} data-testid="pattern-reset">Reset positions</button></p> : <p className="keys">Drag any box. Mock-issued token values; hosts are examples. Moved: {Object.keys(positions).filter((k) => positions[k].x !== initial[k].x || positions[k].y !== initial[k].y).length} box(es).</p>}
     </section>

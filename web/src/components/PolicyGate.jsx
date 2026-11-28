@@ -595,7 +595,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
     const r = await callRealPrivilege(approvalId).catch(() => ({ ok: false, status: 0, body: {} }));
     if (!quiet) setRealBusy(false);
     const title = approvalId ? `tools/call retried with ${approvalId}` : "tools/call";
-    if (quiet && r.ok && r.body.outcome === "held") { setRealWait((w) => ({ ...(w || {}), tries: ((w && w.tries) || 0) + 1 })); return; }
+    if (quiet && r.ok && r.body.outcome === "held") { setRealWait((w) => ({ ...(w || {}), tries: ((w && w.tries) || 0) + 1 })); if (r.body.trace) setRealEx((e) => { const next = [...e]; if (next.length) next[next.length - 1] = { ...next[next.length - 1], tries: (((next[next.length - 1] || {}).tries) || 0) + 1 }; return next; }); return; }
     if (quiet) setRealWait((w) => ({ ...(w || {}), stopped: true }));
     // The server says which run the call belongs to (runObservability): began = a run holds it, afterReset = a Reset came while it was in flight. A first call starts a run.
     const info = r.body.runObservability;
@@ -749,7 +749,9 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
 
       <details className="panel gate-more" data-testid="step-pingid">
         <summary>PingID for real: configure a user who does not have PingID yet</summary>
-        <p className="muted">The lab mocks the step-up. If the user does not have PingID yet, walk the measured enrolment chain, in your own PingOne environment, not here.</p>
+        {realActive
+          ? <p className="muted">In Real mode the PRIVILEGE scenario's approval push is the tenant's own — no mock here. If a user does not have PingID yet, walk the measured enrolment chain in your PingOne environment.</p>
+          : <p className="muted">The lab mocks the step-up. If the user does not have PingID yet, walk the measured enrolment chain, in your own PingOne environment, not here.</p>}
         <button type="button" data-testid="pingid-setup-open" onClick={() => setPingidOpen(true)}>Configure PingID for a user</button>
       </details>
       <PingIdSetup open={pingidOpen} onClose={() => setPingidOpen(false)} resetSignal={resetSignal} />
@@ -765,7 +767,7 @@ export default function PolicyGate({ story, vertical = "retail", mode = "mock", 
       <MfaModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method !== "pingid-push"} amount={beat?.payload?.amount} onIssued={onIssued}
         onVerified={(receipt) => { onMinted(receipt); setBeat(null); retrySame(); }}
         onClose={() => setBeat(null)} />
-      <PushModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method === "pingid-push"} amount={beat?.payload?.amount} onIssued={onIssued}
+      <PushModal open={beat?.kind === "mfa" && beat?.payload?.step_up_method === "pingid-push" && !realActive} amount={beat?.payload?.amount} onIssued={onIssued}
         onVerified={(receipt) => { onMinted(receipt); setBeat(null); retrySame(); }}
         onDenied={() => { setBeat(null); setRun((r) => r && { ...r, error: "push_denied", detail: "The push was denied on the phone; the transfer stays paused." }); }}
         onClose={() => setBeat(null)} />
