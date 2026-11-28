@@ -52,6 +52,11 @@ function mockFetch() {
     if (url.startsWith("/api/scenarios")) return override.scenarios ? override.scenarios() : json(STORY);
     if (url === "/api/info") return override.info ? override.info() : json({ mode: "mock", simulated: true, hosted: false });
     if (url === "/api/shelf") return json({ shelfUrl: "https://shelf.example:8443" });
+    if (override.realOtp && url === "/api/mfa/real-otp/status") return json({ configured: true, inFlight: false });
+    if (override.realOtp && url === "/api/mfa/real-otp/challenge") return json({ challenge: { id: "pingone-real", status: "devices" }, amount: 600, devices: [
+      { id: "dev-pingid", type: "PINGID_MOBILE", nickname: "iPhone", delivery: "the PingID app (push, or OTP if enabled)", otpReady: true },
+      { id: "dev-sms", type: "SMS", nickname: "Mobile 1", delivery: "text message", otpReady: true }] });
+    if (override.realOtp && url === "/api/mfa/real-otp/select") return json({ selected: true, amount: 600 });
     if (url.startsWith("/api/diagram")) return json(DIAGRAM);
     if (url === "/api/policy" && (!opts.method || opts.method === "GET")) {
       return json({ bands: override.bands || DEFAULT_BANDS, receipts: [], workspace: "t" });
@@ -203,6 +208,19 @@ describe("transfer gate tab", () => {
     await waitFor(() => expect(screen.queryByTestId("consent-modal")).toBeNull());
     await waitFor(() => expect(screen.getByTestId("verdict")).toHaveTextContent("PERMITTED"));
     expect(screen.getByTestId("receipt")).toHaveTextContent("hitl-receipt-0001");
+  }, 15000);
+  it("real OTP: picking the PingID device says what to do when no push arrives; picking SMS does not", async () => {
+    override.realOtp = true;
+    await ready();
+    await userEvent.clear(screen.getByTestId("call-amount"));
+    await userEvent.type(screen.getByTestId("call-amount"), "600");
+    await userEvent.click(screen.getByTestId("call-run"));
+    await userEvent.click(await screen.findByTestId("real-otp-device-PINGID_MOBILE"));
+    expect(await screen.findByTestId("mfa-pingid-hint")).toHaveTextContent("No push? Open the PingID app");
+    await userEvent.click(screen.getByTestId("mfa-restart"));
+    await userEvent.click(await screen.findByTestId("real-otp-device-SMS"));
+    await waitFor(() => expect(screen.getByTestId("mfa-otp")).toBeInTheDocument());
+    expect(screen.queryByTestId("mfa-pingid-hint")).toBeNull();
   }, 15000);
   it("the $600 STEP_UP block opens the MFA modal; the demo OTP verifies and retries", async () => {
     await ready();

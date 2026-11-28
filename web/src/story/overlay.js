@@ -46,7 +46,9 @@ export function createOverlay({ scale = 1, follow = true, doc = (typeof document
   };
   const wipe = () => { while (els.length) els.pop().remove(); };
   let lastCap = null; let raf = null;
-  const clear = () => { lastCap = null; wipe(); };   // an explicit clear also stops the bubble following scrolls
+  let tick = null; let lastKey = null;
+  const stopTick = () => { if (tick !== null) { clearInterval(tick); tick = null; } };
+  const clear = () => { lastCap = null; stopTick(); wipe(); };   // an explicit clear also stops the bubble following scrolls
   const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const view = doc.defaultView || globalThis;
   // A target is a selector, an Element or a function returning one, found again on every redraw: a page that re-renders replaces its nodes.
@@ -84,12 +86,16 @@ export function createOverlay({ scale = 1, follow = true, doc = (typeof document
   let ro = null; let watched = null;
   const watch = (bar) => { if (watched === bar || typeof ResizeObserver === 'undefined') return; if (!ro) ro = new ResizeObserver(() => reflow()); ro.observe(bar); watched = bar; };
 
-  function cap(o) { lastCap = o; listen(); draw(o, true); reflow(); }
+  // A target that moves or resizes with nothing scrolling (a modal that opens with an animation or grows when its device list loads, a floating panel that is dragged)
+  // would leave the red box where the target WAS. While a caption is up, look at the target's box a few times a second and redraw when it changed.
+  const boxKey = (o) => { const t = resolve(o.target); if (!t) return ''; const r = t.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); };
+  const startTick = () => { if (!follow || tick !== null) return; tick = view.setInterval(() => { if (!lastCap) return stopTick(); if (boxKey(lastCap) !== lastKey) draw(lastCap, false); }, 120); };
+  function cap(o) { lastCap = o; listen(); draw(o, true); reflow(); startTick(); }
 
   function draw(o, scroll) {
     ensure(); wipe();
     const vw = view.innerWidth || 1200; const vh = view.innerHeight || 800; let W = Math.round(470 * S); const GAP = 26; const M = 12;
-    const t = resolve(o.target);
+    const t = resolve(o.target); lastKey = boxKey(o);
     if (scroll && t && t.scrollIntoView) t.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });   // instant: a smooth scroll would be measured half way
     const r0 = t ? t.getBoundingClientRect() : null;
     // Clamp the highlight to the viewport: a target wider or taller than the screen (a floating panel dragged
@@ -153,6 +159,6 @@ export function createOverlay({ scale = 1, follow = true, doc = (typeof document
     const c = doc.querySelector('.story-slide .card');
     if (c && c.scrollHeight > c.clientHeight + 4 && c.scrollTo) c.scrollTo({ top: c.scrollHeight - c.clientHeight, behavior: 'smooth' });
   };
-  const destroy = () => { unlisten(); if (ro) { ro.disconnect(); ro = null; watched = null; } clear(); const st = doc.getElementById('story-style'); if (st) st.remove(); };
+  const destroy = () => { unlisten(); stopTick(); if (ro) { ro.disconnect(); ro = null; watched = null; } clear(); const st = doc.getElementById('story-style'); if (st) st.remove(); };
   return { cap, slide, clear, scrollSlide, destroy };
 }
