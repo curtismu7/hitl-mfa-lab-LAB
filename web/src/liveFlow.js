@@ -48,7 +48,9 @@ export function diagramSteps(trail, run, nodeIds = null) {
   const has = (s) => !nodeIds || (nodeIds.includes(s.from) && nodeIds.includes(s.to));
   const walked = trail.filter(has);
   if (!walked.length) return { steps: [], current: -1 };
-  const steps = [...walked];
+  // Paused at a human beat: the arrow the run is waiting on pulses (PatternDiagram), so the diagram visibly updates live.
+  const waiting = isPaused(run) ? walked.length - 1 : -1;
+  const steps = walked.map((s, i) => (i === waiting ? { ...s, waiting: true } : s));
   const next = { from: "policy", to: "transfer", label: "Receipt presented", say: "Receipt presented: the retried call executes", ghost: true };
   const pingid = { from: "approver", to: "pingid", label: "PingID confirms the approver", say: "PingID confirms the approver", ghost: true };
   if (isPaused(run)) for (const g of run.error === "pending_approval" ? [pingid, next] : [next]) if (has(g)) steps.push(g);
@@ -88,11 +90,14 @@ const CHALLENGE_TITLE = { hitl: "Consent challenge", mfa: "MFA challenge", ciba:
 export function reelCards(run, issued = {}) {
   const cards = mockOrRealCards(run, issued);
   // Real mode: these cards are what a real gateway returned (REAL), except the PingID step, which only happens on the owner's phone
-  // and is never reported to the lab (INFERRED). The bearer is the real agent key, which stays on the server.
+  // and is never reported to the lab (INFERRED). The bearer is the real agent key, which stays on the server. Mock talk
+  // ("MOCK", "this lab does not mint", "placeholder") is dropped: a real run's cards describe the real credentials.
   if (!run?.real) return cards;
-  return cards.map((c) => (c.id === "bearer"
-    ? { ...c, tag: "REAL", note: "Your real agent key. It is sent from the server and never shown, logged or put in a trace.", fields: { Authorization: "Bearer <agent key, kept on the server>", tool: run.tool } }
-    : { ...c, tag: c.id === "pingid" ? "INFERRED" : "REAL" }));
+  return cards.map((c) => {
+    if (c.id === "bearer") return { ...c, tag: "REAL", state: "presented", note: "Your real agent key. It is sent from the server and never shown, logged or put in a trace.", fields: { Authorization: "Bearer <agent key, kept on the server>", tool: run.tool } };
+    const note = c.note ? String(c.note).replace(/this lab's mock/gi, "the gateway").replace(/\bmock\b/gi, "the lab's simulated").replace(/this lab does not mint an agent JWT\. The gate decides on the amount and the agent context\./i, "The agent key is real and stays on the server; the gateway decides on the amount.") : c.note;
+    return { ...c, tag: c.id === "pingid" ? "INFERRED" : "REAL", note };
+  });
 }
 
 function mockOrRealCards(run, issued) {
