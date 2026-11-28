@@ -7,7 +7,7 @@ import GatewayTrace from "../gateway-trace/GatewayTrace.jsx";
 import RunObs from "./RunObs";
 import TokenReel from "./TokenReel";
 import { nextTrail, realRun, reelCards } from "../liveFlow";
-import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, startRealOtp, selectRealOtpDevice, verifyRealOtp, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
+import { callRealPrivilege, getJson, decidePrivilege, getPrivilegeQueue, runTool, getPolicy, setPolicy as postPolicy, startMfa, verifyMfa, startRealOtp, selectRealOtpDevice, verifyRealOtp, pollRealOtp, bcAuthorize, pollCiba, respondCiba, expireCiba, respondConsent, startPush, pollPush, respondPush } from "../api";
 import { visible } from "../safeText";
 import PingIdSetup from "./PingIdSetup";
 
@@ -198,6 +198,25 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
       }, () => setMsg("Could not start the MFA challenge."));
     });
   }, [open, amount]);
+  // A PingID push can simply be approved in the app: PingOne marks the challenge COMPLETED, no number needed. Poll for that while the
+  // code box stays open as the fallback (a code typed instead ends the challenge, and the poll then stops on its own).
+  const pushPending = Boolean(open && realOtp && realOtp.selectedDevice && realOtp.push);
+  const cb = useRef({ onVerified });
+  useEffect(() => { cb.current = { onVerified }; });
+  useEffect(() => {
+    if (!pushPending) return undefined;
+    let stop = false; let timer = null;
+    const tick = async () => {
+      const r = await pollRealOtp(method).catch(() => null);
+      if (stop) return;
+      if (r && r.ok && r.body.status === "approved" && r.body.receipt) { cb.current.onVerified(r.body.receipt); return; }
+      if (r && r.ok && r.body.status === "failed") { setMsg("The push was not approved in time. Press Start over to send another."); return; }
+      if (r && !r.ok && r.body.error === "otp_no_challenge") return;
+      timer = setTimeout(tick, 2000);
+    };
+    timer = setTimeout(tick, 2000);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [pushPending, method]);
   if (!open) return null;
   // The two real beats use different devices: the one-time-code beat takes a code PingOne sends (SMS, EMAIL); the push beat (method "pingid-push") takes the PingID app.
   const pushBeat = method === "pingid-push";
@@ -209,7 +228,7 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
     setRealOtp((s) => ({ ...s, picking: deviceId }));
     const r = await selectRealOtpDevice({ deviceId }).catch(() => ({ ok: false, body: {} }));
     setRealOtp((s) => ({ ...s, picking: null }));
-    if (r.ok) setRealOtp((s) => ({ ...s, selectedDevice: deviceId }));
+    if (r.ok) setRealOtp((s) => ({ ...s, selectedDevice: deviceId, push: Boolean(r.body.push) }));
     else setMsg(r.body.detail || "Could not select that device.");
   };
   const restart = async () => {
@@ -264,8 +283,8 @@ function MfaModal({ open, amount, onVerified, onClose, onIssued, method = null, 
             ) : realOtp ? (
               <>
                 <label htmlFor="mfa-otp">One-time code — <strong>real</strong>: {realOtp.devices.find((d) => d.id === realOtp.selectedDevice)?.type === "PINGID_MOBILE"
-                  ? <>PingOne asked the PingID app to push it. <strong data-testid="mfa-pingid-hint">No push? Open the PingID app and type the passcode it shows.</strong></>
-                  : <>it was sent to the device you picked.</>} Type it and Verify.</label>
+                  ? <>PingOne sent a push to the PingID app: <strong data-testid="mfa-pingid-hint">approve it there and this page carries on by itself. No push, or the app shows a number? Type that code instead.</strong></>
+                  : <>it was sent to the device you picked.</>} {realOtp.push ? "" : " Type it and Verify."}</label>
                 <input id="mfa-otp" type="text" inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value)} data-testid="mfa-otp" />
                 <div className="modal__actions">
                   <button type="button" data-testid="mfa-verify" disabled={verifying || !otp.trim()} onClick={verify}>Verify</button>

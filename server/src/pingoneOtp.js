@@ -113,8 +113,10 @@ export function createPingoneOtp({ env = process.env, fetchImpl = (...a) => glob
       if (!sel.ok) throw new RealError('otp_select', `device selection failed (HTTP ${sel.status}): ${String(sel.text).slice(0, 120)}`, 502);
       const otpHref = sel.json?._links?.['otp.check']?.href;
       if (!otpHref) throw new RealError('otp_no_otp', 'the selected device does not offer otp.check — enable OTP for it in the MFA policy, or pick another device', 409);
-      challenge = { ...challenge, otpHref, deviceType: sel.json?._embedded?.devices?.[0]?.type || 'device' };
-      return { selected: true, amount: challenge.amount, hint: 'the device is showing a one-time code — type it to verify' };
+      // PINGID_MOBILE answers PUSH_CONFIRMATION_REQUIRED: the approver can just approve in the app (poll() sees COMPLETED) or type a code (verify()).
+      const push = sel.json?.status === 'PUSH_CONFIRMATION_REQUIRED';
+      challenge = { ...challenge, otpHref, push, deviceType: sel.json?._embedded?.devices?.[0]?.type || 'device' };
+      return { selected: true, push, amount: challenge.amount, hint: push ? 'approve the push in the PingID app (or type the code it shows)' : 'the device is showing a one-time code — type it to verify' };
     },
 
     /** Submit the code the human read from the app. */
@@ -135,6 +137,18 @@ export function createPingoneOtp({ env = process.env, fetchImpl = (...a) => glob
         throw new RealError('otp_failed', `OTP verification failed: ${reason}`, 401);
       }
       return { verified: true, amount: boundAmount };
+    },
+
+    /** Has the approver approved the push? Read the challenge's status at PingOne; COMPLETED ends the challenge (single use). */
+    async poll() {
+      if (!challenge || !challenge.daId || !challenge.push) throw new RealError('otp_no_challenge', 'no push challenge in flight', 409);
+      const token = await workerToken();
+      const r = await api(`/deviceAuthentications/${challenge.daId}`, { token });
+      if (!r.ok) throw new RealError('otp_poll', `could not read the push status (HTTP ${r.status})`, 502);
+      const status = r.json?.status;
+      if (status === 'COMPLETED') { const amount = challenge.amount ?? null; challenge = null; return { status: 'approved', amount }; }
+      if (status === 'FAILED' || status === 'EXPIRED') { challenge = null; return { status: 'failed' }; }
+      return { status: 'pending' };
     },
 
     cancel() { challenge = null; return { cancelled: true }; },
